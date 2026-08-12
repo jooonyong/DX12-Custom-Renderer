@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source">
+      <UniqueIdentifier>{84bf0a18-5e1e-4cb1-b424-47c9a148974b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Application">
+      <UniqueIdentifier>{ab68af84-ca37-4b3d-b085-84a7a19341d6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Platform">
+      <UniqueIdentifier>{7e3527f0-b6b6-46ed-95f1-6a4c68352212}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\RHI">
+      <UniqueIdentifier>{06549d6c-0be0-40c5-a492-c9639dd115cf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\RHI\D3D12">
+      <UniqueIdentifier>{a8123186-4c43-4a60-bece-8a66f7876e87}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Platform\Windows">
+      <UniqueIdentifier>{ba8e6b3e-47c1-46b7-99ab-258239be27b6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Application.cpp">
+      <Filter>Source\Application</Filter>
+    </ClCompile>
+    <ClCompile Include="WindowsWindow.cpp">
+      <Filter>Source\Platform\Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D12Device.cpp">
+      <Filter>Source\RHI\D3D12</Filter>
+    </ClCompile>
+    <ClCompile Include="Main.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Application.h">
+      <Filter>Source\Application</Filter>
+    </ClInclude>
+    <ClInclude Include="WindowsWindow.h">
+      <Filter>Source\Platform\Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12Device.h">
+      <Filter>Source\RHI\D3D12</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

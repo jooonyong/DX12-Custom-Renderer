@@ -1,0 +1,13 @@
+# Visual Studio
+.vs/
+
+# Build outputs
+x64/
+Debug/
+Release/
+
+# Visual Studio generated files
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
