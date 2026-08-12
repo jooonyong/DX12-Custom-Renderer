@@ -2,12 +2,16 @@
 
 bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 {
-	if (!Wnd.Initialize(Instance, 1920, 1080, L"Custom Renderer"))
+	if (!Wnd.Initialize(Instance, 1080, 720, L"Custom Renderer"))
 	{
 		return false;
 	}
 	Wnd.Show(ShowCommand);
 
+	if (!Renderer.Initialize(Wnd.GetHandle(), 1080, 720))
+	{
+		return false;
+	}
 	bRunning = true;
 	return true;
 }
@@ -17,6 +21,7 @@ void Application::Run()
 	while (bRunning)
 	{
 		ProcessMessages();
+		Renderer.RenderFrame();
 	}
 }
 

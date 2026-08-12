@@ -11,6 +11,9 @@ class D3D12Device
 public:
 	bool Initialize();
 
+	ID3D12Device* GetDevice() const { return Device; }
+	IDXGIFactory4* GetFactory() const { return Factory; }
+
 private:
 	bool CreateFactory();
 	bool SelectAdapter();

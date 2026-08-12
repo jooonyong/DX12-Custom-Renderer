@@ -1,6 +1,7 @@
 #pragma once
 #include "WindowsWindow.h"
 #include "D3D12Device.h"
+#include "Renderer.h"
 
 class Application
 {
@@ -18,4 +19,5 @@ private:
 private:
 	bool bRunning = false;
 	WindowsWindow Wnd;
+	Renderer Renderer;
 };
