@@ -35,6 +35,16 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreatePipelineState())
+	{
+		return false;
+	}
+	if (!CreateVertexBuffer())
+	{
+		return false;
+	}
+	UpdateViewport(Width, Height);
+
 	return true;
 }
 
@@ -64,6 +74,22 @@ void Renderer::RenderFrame()
 
 	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
+
+	//삼각형 그리기
+	CommandList->SetPipelineState(PipelineState);
+	CommandList->SetGraphicsRootSignature(RootSignature);
+
+	UpdateViewport(Width, Height);
+	CommandList->RSSetViewports(1, &Viewport);
+	CommandList->RSSetScissorRects(1, &ScissorRect);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
+	CommandList->OMSetRenderTargets(1, &RTV, FALSE, nullptr);
+
+	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	CommandList->IASetVertexBuffers(0, 1, &VBView);
+
+	CommandList->DrawInstanced(3, 1, 0, 0);
 
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -194,5 +220,142 @@ Microsoft::WRL::ComPtr<IDxcBlob> Renderer::CompileShader(const wchar_t* FilePath
 		return nullptr;
 	}
 	return ShaderBlob;
+}
+
+bool Renderer::CreatePipelineState()
+{
+	D3D12_SHADER_BYTECODE VS;
+	D3D12_SHADER_BYTECODE PS;
+	VS.pShaderBytecode = VertexShader->GetBufferPointer();
+	VS.BytecodeLength = VertexShader->GetBufferSize();
+
+	PS.pShaderBytecode = PixelShader->GetBufferPointer();
+	PS.BytecodeLength = PixelShader->GetBufferSize();
+
+	D3D12_INPUT_ELEMENT_DESC InputLayout[] = {
+		{
+			"POSITION",
+			0,
+			DXGI_FORMAT_R32G32B32_FLOAT,
+			0,
+			0,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		},
+		{
+			"COLOR",
+			0,
+			DXGI_FORMAT_R32G32B32A32_FLOAT,
+			0,
+			12,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		}
+	};
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC PipelineStateDesc{};
+	PipelineStateDesc.pRootSignature = RootSignature;
+	PipelineStateDesc.VS = VS;
+	PipelineStateDesc.PS = PS;
+	PipelineStateDesc.InputLayout.NumElements= 2;
+	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
+	PipelineStateDesc.NodeMask = 0;
+	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	PipelineStateDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	PipelineStateDesc.RasterizerState.MultisampleEnable = false;
+	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	PipelineStateDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].LogicOpEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	PipelineStateDesc.DepthStencilState.DepthEnable = false;
+	PipelineStateDesc.DepthStencilState.StencilEnable = false;
+	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	PipelineStateDesc.NumRenderTargets = 1;
+	PipelineStateDesc.SampleDesc.Count = 1;
+	PipelineStateDesc.SampleDesc.Quality = 0;
+	PipelineStateDesc.SampleMask = UINT_MAX;
+
+	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&PipelineState))))
+	{
+		return false;
+	}
+	return true;
+}
+
+bool Renderer::CreateVertexBuffer()
+{
+	//삼각형 정점 3개
+	Vertex Vertices[] =
+	{
+		{
+			{  0.0f,  0.5f, 0.0f },
+			{  1.0f,  0.0f, 0.0f, 1.0f }
+		},
+
+		{
+			{  0.5f, -0.5f, 0.0f },
+			{  0.0f,  1.0f, 0.0f, 1.0f }
+		},
+
+		{
+			{ -0.5f, -0.5f, 0.0f },
+			{  0.0f,  0.0f, 1.0f, 1.0f }
+		}
+	};
+	D3D12_RESOURCE_DESC BufferDesc{};
+	BufferDesc.Width = sizeof(Vertex) * 3;
+	BufferDesc.Height = 1;
+	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	BufferDesc.DepthOrArraySize = 1;
+	BufferDesc.MipLevels = 1;
+	BufferDesc.SampleDesc.Count = 1;
+	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	D3D12_HEAP_PROPERTIES HeapProperties{};
+	HeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+	//Resource와 Resource가 사용할 GPU 메모리 할당하는 함수
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE,
+		&BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&VertexBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	//CPU에서 접근 가능한 주소를 얻어서
+	void* MappedData = nullptr;
+	if (FAILED(VertexBuffer->Map(0, nullptr, &MappedData)))
+	{
+		return false;
+	}
+	//Vertice배열 데이터를 해당 주소에 복사
+	memcpy(MappedData, Vertices, sizeof(Vertices));
+
+	VertexBuffer->Unmap(0, nullptr);
+
+	VBView.BufferLocation = VertexBuffer->GetGPUVirtualAddress();
+	VBView.SizeInBytes = sizeof(Vertices);
+	VBView.StrideInBytes = sizeof(Vertex);
+
+	return true;
+}
+
+void Renderer::UpdateViewport(UINT Width, UINT Height)
+{
+	this->Width = Width;
+	this->Height = Height;
+
+	Viewport.Width = static_cast<float>(Width);
+	Viewport.Height = static_cast<float>(Height);
+	Viewport.TopLeftX = 0.0f;
+	Viewport.TopLeftY = 0.0f;
+	Viewport.MinDepth = 0.0f;
+	Viewport.MaxDepth = 1.0f;
+
+	ScissorRect.left = 0.0f;
+	ScissorRect.top = 0.0f;
+	ScissorRect.right = static_cast<float>(Width);
+	ScissorRect.bottom = static_cast<float>(Height);
 }
 

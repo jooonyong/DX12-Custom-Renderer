@@ -8,6 +8,12 @@
 
 class IDxcBlob;
 
+struct Vertex
+{
+	float Position[3];
+	float Color[4];
+};
+
 class Renderer
 {
 public:
@@ -18,6 +24,12 @@ public:
 	bool CreateRootSignature();
 	bool CreateShaders();
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const wchar_t* FilePath, const wchar_t* EntryPoint, const wchar_t* TargetProfile);
+
+	bool CreatePipelineState();
+
+	bool CreateVertexBuffer();
+
+	void UpdateViewport(UINT Width, UINT Height);
 
 private:
 	D3D12Device Device;
@@ -31,4 +43,15 @@ private:
 
 	Microsoft::WRL::ComPtr<IDxcBlob> VertexShader;
 	Microsoft::WRL::ComPtr<IDxcBlob> PixelShader;
+
+	ID3D12PipelineState* PipelineState;
+
+	ID3D12Resource* VertexBuffer;
+	D3D12_VERTEX_BUFFER_VIEW VBView;
+
+	D3D12_VIEWPORT Viewport;
+	D3D12_RECT ScissorRect;
+
+	UINT Width;
+	UINT Height;
 };
