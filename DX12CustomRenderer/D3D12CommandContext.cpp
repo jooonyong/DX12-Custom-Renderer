@@ -1,13 +1,8 @@
 #include "D3D12CommandContext.h"
 
-bool D3D12CommandContext::Initialize(D3D12Device* Device)
+bool D3D12CommandContext::Initialize(D3D12Device* Device, ID3D12CommandAllocator* CommandAllocator)
 {
 	if(!Device || !Device->GetDevice())
-	{
-		return false;
-	}
-
-	if(FAILED(Device->GetDevice()->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&CommandAllocator))))
 	{
 		return false;
 	}
@@ -16,7 +11,7 @@ bool D3D12CommandContext::Initialize(D3D12Device* Device)
 	{
 		return false;
 	}
-	//CommandList는 생성 직후 Open(Recording) 상태이므로 Close()를 호출하여 초기화해야 한다.
+	//CommandList는 생성 직후 Open(Recording) 상태이므로 Close()를 호출하여 초기화
 	if (FAILED(CommandList->Close()))
 	{
 		return false;
@@ -25,8 +20,12 @@ bool D3D12CommandContext::Initialize(D3D12Device* Device)
 	return true;
 }
 
-bool D3D12CommandContext::Reset()
+bool D3D12CommandContext::Reset(ID3D12CommandAllocator* CommandAllocator)
 {
+	if (!CommandAllocator || !CommandList)
+	{
+		return false;
+	}
 	if (FAILED(CommandAllocator->Reset()))
 	{
 		return false;

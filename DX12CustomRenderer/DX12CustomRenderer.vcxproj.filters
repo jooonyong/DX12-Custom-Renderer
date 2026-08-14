@@ -22,6 +22,9 @@
     <Filter Include="Source\Renderer">
       <UniqueIdentifier>{f1d155f1-afdc-4a40-a999-d0892c240661}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source\Shaders">
+      <UniqueIdentifier>{e9ec1094-31ee-48ae-a3ec-5ead444ee479}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Application.cpp">
@@ -71,5 +74,10 @@
     <ClInclude Include="Renderer.h">
       <Filter>Source\Renderer</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Triangle.hlsl">
+      <Filter>Source\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

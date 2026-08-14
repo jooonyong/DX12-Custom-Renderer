@@ -16,6 +16,7 @@ public:
 	IDXGISwapChain4* GetNativeSwapChain() const { return SwapChain.Get(); }
 	ID3D12Resource* GetCurrentBackBuffer() const;
 	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const;
+
 private:
 	Microsoft::WRL::ComPtr<IDXGISwapChain4> SwapChain;
 	ID3D12Resource* BackBuffers[BufferCount];
