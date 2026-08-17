@@ -1,7 +1,34 @@
 #include "D3D12Device.h"
 
+D3D12Device::~D3D12Device()
+{
+	if (Factory)
+	{
+		Factory->Release();
+		Factory = nullptr;
+	}
+	if (Adapter)
+	{
+		Adapter->Release();
+		Adapter = nullptr;
+	}
+	if (Device)
+	{
+		Device->Release();
+		Device = nullptr;
+	}
+}
+
 bool D3D12Device::Initialize()
 {
+	//D3D12 Debug¿ë
+	Microsoft::WRL::ComPtr<ID3D12Debug> DebugController;
+	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(DebugController.GetAddressOf()))))
+	{
+		DebugController->EnableDebugLayer();
+	}
+
+
 	if (!CreateFactory())
 	{
 		return false;

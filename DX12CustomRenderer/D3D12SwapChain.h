@@ -9,6 +9,8 @@ static constexpr UINT BufferCount = 3;
 class D3D12SwapChain
 {
 public:
+	~D3D12SwapChain();
+
 	bool Initialize(D3D12Device* Device, D3D12CommandQueue* CommandQueue, HWND Hwnd, UINT32 Width, UINT32 Height);
 
 	void Present();

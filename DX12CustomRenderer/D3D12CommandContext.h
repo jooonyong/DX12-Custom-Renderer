@@ -11,6 +11,7 @@ struct FrameResource
 class D3D12CommandContext
 {
 public:
+	~D3D12CommandContext();
 	bool Initialize(D3D12Device* Device, ID3D12CommandAllocator* CommandAllocator);
 
 	bool Reset(ID3D12CommandAllocator* CommandAllocator);

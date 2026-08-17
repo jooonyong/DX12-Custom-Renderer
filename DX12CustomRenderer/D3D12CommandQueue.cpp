@@ -8,6 +8,17 @@ D3D12CommandQueue::~D3D12CommandQueue()
 		CloseHandle(FenceEvent);
 		FenceEvent = nullptr;
 	}
+	if (CommandQueue)
+	{
+		CommandQueue->Release();
+		CommandQueue = nullptr;
+	}
+	if (Fence)
+	{
+		Fence->Release();
+		Fence = nullptr;
+	}
+
 }
 
 bool D3D12CommandQueue::Initialize(D3D12Device* Device)

@@ -17,6 +17,8 @@ struct Vertex
 class Renderer
 {
 public:
+	~Renderer();
+
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
 	void RenderFrame();
@@ -28,6 +30,7 @@ public:
 	bool CreatePipelineState();
 
 	bool CreateVertexBuffer();
+	bool CreateIndexBuffer();
 
 	void UpdateViewport(UINT Width, UINT Height);
 
@@ -39,17 +42,20 @@ private:
 
 	FrameResource Frame[BufferCount];
 
-	ID3D12RootSignature* RootSignature;
+	ID3D12RootSignature* RootSignature = nullptr;
 
 	Microsoft::WRL::ComPtr<IDxcBlob> VertexShader;
 	Microsoft::WRL::ComPtr<IDxcBlob> PixelShader;
 
-	ID3D12PipelineState* PipelineState;
+	ID3D12PipelineState* PipelineState = nullptr;
 
-	ID3D12Resource* VertexUploadBuffer;
-	ID3D12Resource* VertexBuffer;
+	ID3D12Resource* VertexUploadBuffer = nullptr;
+	ID3D12Resource* VertexBuffer = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW VBView;
 
+	ID3D12Resource* IndexUploadBuffer = nullptr;
+	ID3D12Resource* IndexBuffer = nullptr;
+	D3D12_INDEX_BUFFER_VIEW IBView;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;

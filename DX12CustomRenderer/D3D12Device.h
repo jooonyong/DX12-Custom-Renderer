@@ -9,6 +9,8 @@
 class D3D12Device
 {
 public:
+	~D3D12Device();
+
 	bool Initialize();
 
 	ID3D12Device* GetDevice() const { return Device; }
@@ -18,6 +20,7 @@ private:
 	bool CreateFactory();
 	bool SelectAdapter();
 	bool CreateDevice();
+
 
 private:
 	IDXGIAdapter* Adapter;

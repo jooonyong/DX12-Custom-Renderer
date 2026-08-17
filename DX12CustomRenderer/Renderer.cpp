@@ -1,5 +1,51 @@
 #include "Renderer.h"
 
+Renderer::~Renderer()
+{
+	if (CommandQueue.GetNativeCommandQueue())
+	{
+		CommandQueue.WaitForIdle();
+	}
+	if (RootSignature)
+	{
+		RootSignature->Release();
+		RootSignature = nullptr;
+	}
+	if (PipelineState)
+	{
+		PipelineState->Release();
+		PipelineState = nullptr;
+	}
+	for (int i = 0; i < BufferCount; i++)
+	{
+		if (Frame[i].CommandAllocator)
+		{
+			Frame[i].CommandAllocator->Release();
+			Frame[i].CommandAllocator = nullptr;
+		}
+	}
+	if (VertexUploadBuffer)
+	{
+		VertexUploadBuffer->Release();
+		VertexUploadBuffer = nullptr;
+	}
+	if (VertexBuffer)
+	{
+		VertexBuffer->Release();
+		VertexBuffer = nullptr;
+	}
+	if (IndexUploadBuffer)
+	{
+		IndexUploadBuffer->Release();
+		IndexUploadBuffer = nullptr;
+	}
+	if (IndexBuffer)
+	{
+		IndexBuffer->Release();
+		IndexBuffer = nullptr;
+	}
+}
+
 bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 {
 	if (!Device.Initialize())
@@ -40,6 +86,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 	if (!CreateVertexBuffer())
+	{
+		return false;
+	}
+	if (!CreateIndexBuffer())
 	{
 		return false;
 	}
@@ -87,8 +137,10 @@ void Renderer::RenderFrame()
 
 	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
-
-	CommandList->DrawInstanced(3, 1, 0, 0);
+	CommandList->IASetIndexBuffer(&IBView);
+	CommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+	
+	//CommandList->DrawInstanced(3, 1, 0, 0);
 
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -284,26 +336,30 @@ bool Renderer::CreatePipelineState()
 
 bool Renderer::CreateVertexBuffer()
 {
-	//삼각형 정점 3개
+	//삼각형 정점 4개
 	Vertex Vertices[] =
 	{
 		{
-			{  0.0f,  0.5f, 0.0f },
-			{  1.0f,  0.0f, 0.0f, 1.0f }
+			{  0.5f, 0.5f, 0.0f },
+			{  1.0f, 0.0f, 0.0f, 1.0f }
 		},
 
 		{
-			{  0.5f, -0.5f, 0.0f },
-			{  0.0f,  1.0f, 0.0f, 1.0f }
+			{  -0.5f, 0.5f, 0.0f },
+			{  0.0f, 1.0f, 0.0f, 1.0f }
 		},
 
 		{
 			{ -0.5f, -0.5f, 0.0f },
 			{  0.0f,  0.0f, 1.0f, 1.0f }
+		},
+		{
+			{0.5f, -0.5f, 0.0f},
+			{0.3f, 0.2f, 0.6f, 1.0f}
 		}
 	};
 	D3D12_RESOURCE_DESC BufferDesc{};
-	BufferDesc.Width = sizeof(Vertex) * 3;
+	BufferDesc.Width = sizeof(Vertex) * 4;
 	BufferDesc.Height = 1;
 	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 	BufferDesc.DepthOrArraySize = 1;
@@ -373,6 +429,89 @@ bool Renderer::CreateVertexBuffer()
 	{
 		VertexUploadBuffer->Release();
 		VertexUploadBuffer = nullptr;
+	}
+
+	return true;
+}
+
+bool Renderer::CreateIndexBuffer()
+{
+	UINT16 Indices[] = {
+		0, 2, 1,
+		0, 3, 2
+	};
+
+	D3D12_RESOURCE_DESC BufferDesc{};
+	BufferDesc.Width = sizeof(Indices);
+	BufferDesc.Height = 1;
+	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	BufferDesc.DepthOrArraySize = 1;
+	BufferDesc.MipLevels = 1;
+	BufferDesc.SampleDesc.Count = 1;
+	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	D3D12_HEAP_PROPERTIES UploadHeapProperties{};
+	UploadHeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+	//Resource와 Resource가 사용할 GPU 메모리 할당하는 함수
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
+		&BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&IndexUploadBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	//CPU에서 접근 가능한 주소를 얻어서
+	void* MappedData = nullptr;
+	if (FAILED(IndexUploadBuffer->Map(0, nullptr, &MappedData)))
+	{
+		return false;
+	}
+	//Indices배열 데이터를 해당 주소에 복사
+	memcpy(MappedData, Indices, sizeof(Indices));
+
+	IndexUploadBuffer->Unmap(0, nullptr);
+
+	D3D12_HEAP_PROPERTIES DefaultHeapProperties{};
+	DefaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	Result = Device.GetDevice()->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE,
+		&BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&IndexBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	IBView.BufferLocation = IndexBuffer->GetGPUVirtualAddress();
+	IBView.SizeInBytes = sizeof(Indices);
+	IBView.Format = DXGI_FORMAT_R16_UINT;
+
+	CommandContext.Reset(Frame[0].CommandAllocator);
+	CommandContext.GetCommandList()->CopyBufferRegion(IndexBuffer, 0, IndexUploadBuffer, 0, sizeof(Indices));
+
+	D3D12_RESOURCE_BARRIER ResourceBarrier{};
+	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	ResourceBarrier.Transition.pResource = IndexBuffer;
+	ResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+	ResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
+	ResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandContext.GetCommandList()->ResourceBarrier(1, &ResourceBarrier);
+	CommandContext.Close();
+
+	CommandQueue.Execute(&CommandContext);
+
+	UINT64 FenceValue = CommandQueue.Signal();
+	if (FenceValue == 0)
+	{
+		return false;
+	}
+	CommandQueue.WaitForFence(FenceValue);
+
+	if (IndexUploadBuffer)
+	{
+		IndexUploadBuffer->Release();
+		IndexUploadBuffer = nullptr;
 	}
 
 	return true;

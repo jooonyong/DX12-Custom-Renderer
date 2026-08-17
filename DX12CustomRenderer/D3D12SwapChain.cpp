@@ -1,5 +1,22 @@
 #include "D3D12SwapChain.h"
 
+D3D12SwapChain::~D3D12SwapChain()
+{
+	for (int i = 0; i < BufferCount; i++)
+	{
+		if (BackBuffers[i])
+		{
+			BackBuffers[i]->Release();
+			BackBuffers[i] = nullptr;
+		}
+	}
+	if (RTVHeap)
+	{
+		RTVHeap->Release();
+		RTVHeap = nullptr;
+	}
+}
+
 bool D3D12SwapChain::Initialize(D3D12Device* Device, D3D12CommandQueue* CommandQueue, HWND Hwnd, UINT32 Width, UINT32 Height)
 {
 	if(!Device || !Device->GetDevice() || !CommandQueue || !CommandQueue->GetNativeCommandQueue() || !Hwnd)

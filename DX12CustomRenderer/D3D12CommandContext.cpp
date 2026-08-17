@@ -1,5 +1,14 @@
 #include "D3D12CommandContext.h"
 
+D3D12CommandContext::~D3D12CommandContext()
+{
+	if (CommandList)
+	{
+		CommandList->Release();
+		CommandList = nullptr;
+	}
+}
+
 bool D3D12CommandContext::Initialize(D3D12Device* Device, ID3D12CommandAllocator* CommandAllocator)
 {
 	if(!Device || !Device->GetDevice())
