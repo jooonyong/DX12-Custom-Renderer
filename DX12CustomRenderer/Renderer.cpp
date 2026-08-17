@@ -79,7 +79,6 @@ void Renderer::RenderFrame()
 	CommandList->SetPipelineState(PipelineState);
 	CommandList->SetGraphicsRootSignature(RootSignature);
 
-	UpdateViewport(Width, Height);
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
@@ -312,12 +311,12 @@ bool Renderer::CreateVertexBuffer()
 	BufferDesc.SampleDesc.Count = 1;
 	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-	D3D12_HEAP_PROPERTIES HeapProperties{};
-	HeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+	D3D12_HEAP_PROPERTIES UploadHeapProperties{};
+	UploadHeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
 
 	//Resource와 Resource가 사용할 GPU 메모리 할당하는 함수
-	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE,
-		&BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&VertexBuffer));
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
+		&BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&VertexUploadBuffer));
 	if (FAILED(Result))
 	{
 		return false;
@@ -325,21 +324,60 @@ bool Renderer::CreateVertexBuffer()
 
 	//CPU에서 접근 가능한 주소를 얻어서
 	void* MappedData = nullptr;
-	if (FAILED(VertexBuffer->Map(0, nullptr, &MappedData)))
+	if (FAILED(VertexUploadBuffer->Map(0, nullptr, &MappedData)))
 	{
 		return false;
 	}
 	//Vertice배열 데이터를 해당 주소에 복사
 	memcpy(MappedData, Vertices, sizeof(Vertices));
 
-	VertexBuffer->Unmap(0, nullptr);
+	VertexUploadBuffer->Unmap(0, nullptr);
+
+	D3D12_HEAP_PROPERTIES DefaultHeapProperties{};
+	DefaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	Result = Device.GetDevice()->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE,
+		&BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&VertexBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
 
 	VBView.BufferLocation = VertexBuffer->GetGPUVirtualAddress();
 	VBView.SizeInBytes = sizeof(Vertices);
 	VBView.StrideInBytes = sizeof(Vertex);
 
+	CommandContext.Reset(Frame[0].CommandAllocator);
+	CommandContext.GetCommandList()->CopyBufferRegion(VertexBuffer, 0, VertexUploadBuffer, 0, sizeof(Vertices));
+
+	D3D12_RESOURCE_BARRIER ResourceBarrier{};
+	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	ResourceBarrier.Transition.pResource = VertexBuffer;
+	ResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+	ResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+	ResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandContext.GetCommandList()->ResourceBarrier(1, &ResourceBarrier);
+	CommandContext.Close();
+
+	CommandQueue.Execute(&CommandContext);
+
+	UINT64 FenceValue = CommandQueue.Signal();
+	if (FenceValue == 0)
+	{
+		return false;
+	}
+	CommandQueue.WaitForFence(FenceValue);
+
+	if (VertexUploadBuffer)
+	{
+		VertexUploadBuffer->Release();
+		VertexUploadBuffer = nullptr;
+	}
+
 	return true;
 }
+
 
 void Renderer::UpdateViewport(UINT Width, UINT Height)
 {

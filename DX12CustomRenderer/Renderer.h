@@ -46,8 +46,10 @@ private:
 
 	ID3D12PipelineState* PipelineState;
 
+	ID3D12Resource* VertexUploadBuffer;
 	ID3D12Resource* VertexBuffer;
 	D3D12_VERTEX_BUFFER_VIEW VBView;
+
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;
