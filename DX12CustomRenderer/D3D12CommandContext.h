@@ -4,8 +4,10 @@
 
 struct FrameResource
 {
-	ID3D12CommandAllocator* CommandAllocator;
+	ID3D12CommandAllocator* CommandAllocator = nullptr;
 	UINT FenceValue = 0;
+	ID3D12Resource* ConstantBuffer = nullptr;
+	void* ConstantBufferMappedData = nullptr;
 };
 
 class D3D12CommandContext

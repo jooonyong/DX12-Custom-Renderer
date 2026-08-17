@@ -5,6 +5,9 @@
 #include "D3D12SwapChain.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
+#include "DirectXMath.h"
+
+static float Angle = 0.0f;
 
 class IDxcBlob;
 
@@ -12,6 +15,11 @@ struct Vertex
 {
 	float Position[3];
 	float Color[4];
+};
+
+struct TransformConstant
+{
+	DirectX::XMFLOAT4X4 WorldMatrix;
 };
 
 class Renderer
@@ -31,6 +39,7 @@ public:
 
 	bool CreateVertexBuffer();
 	bool CreateIndexBuffer();
+	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, ID3D12Resource*& OutBuffer);
 
 	void UpdateViewport(UINT Width, UINT Height);
 
@@ -49,11 +58,9 @@ private:
 
 	ID3D12PipelineState* PipelineState = nullptr;
 
-	ID3D12Resource* VertexUploadBuffer = nullptr;
 	ID3D12Resource* VertexBuffer = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW VBView;
 
-	ID3D12Resource* IndexUploadBuffer = nullptr;
 	ID3D12Resource* IndexBuffer = nullptr;
 	D3D12_INDEX_BUFFER_VIEW IBView;
 
