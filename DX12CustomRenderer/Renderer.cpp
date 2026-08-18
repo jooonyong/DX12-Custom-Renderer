@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "Camera.h"
 
 Renderer::~Renderer()
 {
@@ -137,7 +138,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	return true;
 }
 
-void Renderer::RenderFrame()
+void Renderer::RenderFrame(const Camera& MainCamera)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
 	FrameResource& CurrentFrame = Frame[CurrentIndex];
@@ -170,13 +171,8 @@ void Renderer::RenderFrame()
 	//ConstantBuffer Data(World,View,Projection) ¼¼ÆÃ
 	Angle += 0.01f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle);
-
-	DirectX::XMVECTOR EyePosition = DirectX::XMVectorSet(0.0f, 0.0f, -3.0f, 1.0f);
-	DirectX::XMVECTOR FocusPosition = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
-	DirectX::XMVECTOR UpDirection = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	DirectX::XMMATRIX View = DirectX::XMMatrixLookAtLH(EyePosition,FocusPosition,UpDirection);
-
-	DirectX::XMMATRIX Projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(60.0f), Width/Height, 0.01f,100.0f);
+	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
+	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
 
 	TransformConstant ConstantData;
 	DirectX::XMStoreFloat4x4(&ConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));

@@ -6,7 +6,11 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 	{
 		return false;
 	}
+	
 	Wnd.Show(ShowCommand);
+	
+	QueryPerformanceFrequency(&Frequency);
+	QueryPerformanceCounter(&PreviousTime);
 
 	if (!Renderer.Initialize(Wnd.GetHandle(), 1080, 720))
 	{
@@ -20,8 +24,20 @@ void Application::Run()
 {
 	while (bRunning)
 	{
+		LARGE_INTEGER CurrentTime;
+		QueryPerformanceCounter(&CurrentTime);
+
+		float DeltaTime = static_cast<float>((CurrentTime.QuadPart - PreviousTime.QuadPart)) / static_cast<float>(Frequency.QuadPart);
+		PreviousTime = CurrentTime;
+
+		//OS Event
 		ProcessMessages();
-		Renderer.RenderFrame();
+
+		//Scene, Camera 상태 업데이트
+		Update(DeltaTime);
+
+		//그리기 관련 RenderCommand
+		Renderer.RenderFrame(MainCamera);
 	}
 }
 
@@ -44,4 +60,42 @@ void Application::ProcessMessages()
 		DispatchMessage(&Message);
 	}
 
+}
+
+void Application::Update(float DeltaTime)
+{
+	const float MoveSpeed = 3.0f;
+
+	Angle += MoveSpeed * DeltaTime;
+	if (GetAsyncKeyState('W') & 0x8000)
+	{
+		MainCamera.MoveForward(MoveSpeed * DeltaTime);
+	}
+	if (GetAsyncKeyState('S') & 0x8000)
+	{
+		MainCamera.MoveForward(-MoveSpeed * DeltaTime);
+	}
+	if (GetAsyncKeyState('D') & 0x8000)
+	{
+		MainCamera.MoveRight(MoveSpeed * DeltaTime);
+	}
+	if (GetAsyncKeyState('A') & 0x8000)
+	{
+		MainCamera.MoveRight(-MoveSpeed * DeltaTime);
+	}
+	if (GetAsyncKeyState('Q') & 0x8000)
+	{
+		MainCamera.MoveUp(-MoveSpeed * DeltaTime);
+	}
+	if (GetAsyncKeyState('E') & 0x8000)
+	{
+		MainCamera.MoveUp(MoveSpeed * DeltaTime);
+	}
+
+	int DeltaX;
+	int DeltaY;
+	Wnd.ConsumeMouseDelta(DeltaX, DeltaY);
+
+	const float MouseSensitivity = DirectX::XMConvertToRadians(0.1f);
+	MainCamera.AddRotation(DeltaX * MouseSensitivity, -DeltaY * MouseSensitivity);
 }

@@ -25,6 +25,9 @@
     <Filter Include="Source\Shaders">
       <UniqueIdentifier>{e9ec1094-31ee-48ae-a3ec-5ead444ee479}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source\Scene">
+      <UniqueIdentifier>{5591f0f6-b212-4236-ad9a-b4f0c96532e2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Application.cpp">
@@ -51,6 +54,9 @@
     <ClCompile Include="Renderer.cpp">
       <Filter>Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Camera.cpp">
+      <Filter>Source\Scene</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -73,6 +79,9 @@
     </ClInclude>
     <ClInclude Include="Renderer.h">
       <Filter>Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Camera.h">
+      <Filter>Source\Scene</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

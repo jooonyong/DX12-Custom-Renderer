@@ -7,9 +7,8 @@
 #include "dxcapi.h"
 #include "DirectXMath.h"
 
-static float Angle = 0.0f;
-
 class IDxcBlob;
+class Camera;
 
 struct Vertex
 {
@@ -31,7 +30,7 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
-	void RenderFrame();
+	void RenderFrame(const Camera& MainCamera);
 
 	bool CreateRootSignature();
 	bool CreateShaders();

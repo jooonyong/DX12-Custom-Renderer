@@ -2,6 +2,7 @@
 #include "WindowsWindow.h"
 #include "D3D12Device.h"
 #include "Renderer.h"
+#include "Camera.h"
 
 class Application
 {
@@ -15,9 +16,14 @@ public:
 
 private:
 	void ProcessMessages();
+	void Update(float DeltaTime);
 
 private:
 	bool bRunning = false;
 	WindowsWindow Wnd;
 	Renderer Renderer;
+	Camera MainCamera;
+
+	LARGE_INTEGER Frequency;
+	LARGE_INTEGER PreviousTime;
 };
