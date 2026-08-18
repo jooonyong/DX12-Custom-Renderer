@@ -39,6 +39,16 @@ Renderer::~Renderer()
 		IndexBuffer->Release();
 		IndexBuffer = nullptr;
 	}
+	if (DepthBuffer)
+	{
+		DepthBuffer->Release();
+		DepthBuffer = nullptr;
+	}
+	if (DSVHeap)
+	{
+		DSVHeap->Release();
+		DSVHeap = nullptr;
+	}
 }
 
 bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
@@ -58,6 +68,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 			return false;
 		}
 		
+		//ConstantBuffer용 UploadHeap
 		D3D12_RESOURCE_DESC BufferDesc{};
 		BufferDesc.Width = sizeof(TransformConstant);
 		BufferDesc.Height = 1;
@@ -91,6 +102,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+
+	UpdateViewport(Width, Height);
+
+
 	if (!CreateRootSignature())
 	{
 		return false;
@@ -104,6 +119,12 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+
+	if (!CreateDepthBuffer())
+	{
+		return false;
+	}
+
 	if (!CreateVertexBuffer())
 	{
 		return false;
@@ -112,7 +133,6 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	UpdateViewport(Width, Height);
 
 	return true;
 }
@@ -144,12 +164,24 @@ void Renderer::RenderFrame()
 	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
 
-	//ConstantBuffer Data 세팅
+	D3D12_CPU_DESCRIPTOR_HANDLE DSV = DSVHeap->GetCPUDescriptorHandleForHeapStart();
+	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0.0f, 0, nullptr);
+
+	//ConstantBuffer Data(World,View,Projection) 세팅
 	Angle += 0.01f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle);
 
+	DirectX::XMVECTOR EyePosition = DirectX::XMVectorSet(0.0f, 0.0f, -3.0f, 1.0f);
+	DirectX::XMVECTOR FocusPosition = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
+	DirectX::XMVECTOR UpDirection = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	DirectX::XMMATRIX View = DirectX::XMMatrixLookAtLH(EyePosition,FocusPosition,UpDirection);
+
+	DirectX::XMMATRIX Projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(60.0f), Width/Height, 0.01f,100.0f);
+
 	TransformConstant ConstantData;
 	DirectX::XMStoreFloat4x4(&ConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));
+	DirectX::XMStoreFloat4x4(&ConstantData.ViewMatrix, DirectX::XMMatrixTranspose(View));
+	DirectX::XMStoreFloat4x4(&ConstantData.ProjectionMatrix, DirectX::XMMatrixTranspose(Projection));
 
 	memcpy(CurrentFrame.ConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
 
@@ -161,7 +193,7 @@ void Renderer::RenderFrame()
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
-	CommandList->OMSetRenderTargets(1, &RTV, FALSE, nullptr);
+	CommandList->OMSetRenderTargets(1, &RTV, FALSE, &DSV);
 
 	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
@@ -349,12 +381,15 @@ bool Renderer::CreatePipelineState()
 	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 	PipelineStateDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 	PipelineStateDesc.RasterizerState.MultisampleEnable = false;
-	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	PipelineStateDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
 	PipelineStateDesc.BlendState.RenderTarget[0].LogicOpEnable = FALSE;
 	PipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	PipelineStateDesc.DepthStencilState.DepthEnable = false;
+	PipelineStateDesc.DepthStencilState.DepthEnable = true;
 	PipelineStateDesc.DepthStencilState.StencilEnable = false;
+	PipelineStateDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	PipelineStateDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	PipelineStateDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	PipelineStateDesc.NumRenderTargets = 1;
@@ -525,6 +560,58 @@ bool Renderer::CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE
 		UploadBuffer->Release();
 		UploadBuffer = nullptr;
 	}
+
+	return true;
+}
+
+bool Renderer::CreateDepthBuffer()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC DSVHeapDesc{};
+	DSVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	DSVHeapDesc.NumDescriptors = 1;
+	DSVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+	if (FAILED(Device.GetDevice()->CreateDescriptorHeap(&DSVHeapDesc, IID_PPV_ARGS(&DSVHeap))))
+	{
+		return false;
+	}
+
+	D3D12_RESOURCE_DESC DepthBufferDesc{};
+	DepthBufferDesc.Width = Width;
+	DepthBufferDesc.Height = Height;
+	DepthBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	DepthBufferDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	DepthBufferDesc.MipLevels = 1;
+	DepthBufferDesc.Alignment = 0;
+	DepthBufferDesc.DepthOrArraySize = 1;
+	DepthBufferDesc.SampleDesc.Count = 1;
+	DepthBufferDesc.SampleDesc.Quality = 0;
+	DepthBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	DepthBufferDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE ClearValue{};
+	ClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+	ClearValue.DepthStencil.Depth = 1.0f;
+	ClearValue.DepthStencil.Stencil = 0;
+
+	D3D12_HEAP_PROPERTIES DepthBufferHeapProperties{};
+	DepthBufferHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&DepthBufferHeapProperties, D3D12_HEAP_FLAG_NONE,
+		&DepthBufferDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &ClearValue, IID_PPV_ARGS(&DepthBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC DSVDesc{};
+	DSVDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	DSVDesc.Texture2D.MipSlice = 0;
+	DSVDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle = DSVHeap->GetCPUDescriptorHandleForHeapStart();
+	Device.GetDevice()->CreateDepthStencilView(DepthBuffer, &DSVDesc, DSVHandle);
 
 	return true;
 }

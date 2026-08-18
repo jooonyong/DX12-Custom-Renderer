@@ -13,14 +13,18 @@ struct VSOutput
 cbuffer TransformBuffer : register(b0)
 {
     float4x4 World;
+    float4x4 View;
+    float4x4 Projection;
 }
 
 VSOutput VSMain(VSInput Input)
 {
     VSOutput Output;
     
-    Output.Position = mul(float4(Input.Position, 1.0f),World); 
-    //Output.Position = float4(Input.Position, 1.0f);
+    Output.Position = mul(float4(Input.Position, 1.0f), World);  
+    Output.Position = mul(Output.Position, View);
+    Output.Position = mul(Output.Position, Projection);
+
     Output.Color = Input.Color;
 
     return Output;

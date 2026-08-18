@@ -20,6 +20,8 @@ struct Vertex
 struct TransformConstant
 {
 	DirectX::XMFLOAT4X4 WorldMatrix;
+	DirectX::XMFLOAT4X4 ViewMatrix;
+	DirectX::XMFLOAT4X4 ProjectionMatrix;
 };
 
 class Renderer
@@ -40,6 +42,7 @@ public:
 	bool CreateVertexBuffer();
 	bool CreateIndexBuffer();
 	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, ID3D12Resource*& OutBuffer);
+	bool CreateDepthBuffer();
 
 	void UpdateViewport(UINT Width, UINT Height);
 
@@ -63,6 +66,9 @@ private:
 
 	ID3D12Resource* IndexBuffer = nullptr;
 	D3D12_INDEX_BUFFER_VIEW IBView;
+
+	ID3D12Resource* DepthBuffer = nullptr;
+	ID3D12DescriptorHeap* DSVHeap = nullptr;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;
