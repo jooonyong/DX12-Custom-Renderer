@@ -14,6 +14,7 @@ struct Vertex
 {
 	float Position[3];
 	float Color[4];
+	float UV[2];
 };
 
 struct TransformConstant
@@ -42,6 +43,7 @@ public:
 	bool CreateIndexBuffer();
 	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, ID3D12Resource*& OutBuffer);
 	bool CreateDepthBuffer();
+	bool CreateTexture();
 
 	void UpdateViewport(UINT Width, UINT Height);
 
@@ -68,6 +70,9 @@ private:
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
+
+	ID3D12Resource* Texture = nullptr;
+	ID3D12DescriptorHeap* SRVHeap = nullptr;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;

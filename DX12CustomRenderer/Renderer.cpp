@@ -50,6 +50,16 @@ Renderer::~Renderer()
 		DSVHeap->Release();
 		DSVHeap = nullptr;
 	}
+	if (Texture)
+	{
+		Texture->Release();
+		Texture = nullptr;
+	}
+	if (SRVHeap)
+	{
+		SRVHeap->Release();
+		SRVHeap = nullptr;
+	}
 }
 
 bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
@@ -106,7 +116,6 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 	UpdateViewport(Width, Height);
 
-
 	if (!CreateRootSignature())
 	{
 		return false;
@@ -134,7 +143,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-
+	if (!CreateTexture())
+	{
+		return false;
+	}
 	return true;
 }
 
@@ -364,6 +376,15 @@ bool Renderer::CreatePipelineState()
 			12,
 			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 			0
+		},
+		{
+			"TEXCOORD",
+			0,
+			DXGI_FORMAT_R32G32_FLOAT,
+			0,
+			28,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
 		}
 	};
 
@@ -371,7 +392,7 @@ bool Renderer::CreatePipelineState()
 	PipelineStateDesc.pRootSignature = RootSignature;
 	PipelineStateDesc.VS = VS;
 	PipelineStateDesc.PS = PS;
-	PipelineStateDesc.InputLayout.NumElements= 2;
+	PipelineStateDesc.InputLayout.NumElements= 3;
 	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
 	PipelineStateDesc.NodeMask = 0;
 	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
@@ -402,45 +423,137 @@ bool Renderer::CreatePipelineState()
 
 bool Renderer::CreateVertexBuffer()
 {
-	//cube 정점 8개
+	//cube 정점 8개->24개(각 vertex의 UV, normal을 면 별로 공유하지 않으므로)
 	Vertex Vertices[] =
 	{
+		//Front
 		{
 			{  0.5f, 0.5f, 0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f }
+			{  1.0f, 0.0f, 0.0f, 1.0f },
+			{  1.0f, 0.0f }
 		},
 
 		{
 			{  -0.5f, 0.5f, 0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f }
+			{  0.0f, 1.0f, 0.0f, 1.0f },
+			{  0.0f, 0.0f }
 		},
 
 		{
 			{ -0.5f, -0.5f, 0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f }
+			{  0.0f,  0.0f, 1.0f, 1.0f },
+			{ 0.0f, 1.0f }
 		},
 		{
 			{0.5f, -0.5f, 0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f}
+			{0.3f, 0.2f, 0.6f, 1.0f},
+			{1.0f, 1.0f}
 		},
-		///
+		//Top
 		{
 			{  0.5f, 0.5f, -0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f }
+			{  1.0f, 0.0f, 0.0f, 1.0f },
+			{  1.0f, 0.0f }
 		},
 
 		{
 			{  -0.5f, 0.5f, -0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f }
+			{  0.0f, 1.0f, 0.0f, 1.0f },
+			{  0.0f, 0.0f }
 		},
-
 		{
-			{ -0.5f, -0.5f, -0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f }
+			{ -0.5f, 0.5f, 0.5f },
+			{  0.0f,  0.0f, 1.0f, 1.0f },
+			{  0.0f, 1.0f }
+		},
+		{
+			{0.5f, 0.5f, 0.5f},
+			{0.3f, 0.2f, 0.6f, 1.0f},
+			{1.0f, 1.0f}
+		},
+		//Right
+		{
+			{ 0.5f, 0.5f, -0.5f },
+			{  1.0f, 0.0f, 0.0f, 1.0f },
+			{  1.0f, 0.0f }
+		},
+		{
+			{  0.5f, 0.5f, 0.5f },
+			{  0.0f, 1.0f, 0.0f, 1.0f },
+			{  0.0f, 0.0f }
+		},
+		{
+			{  0.5f, -0.5f, 0.5f },
+			{  0.0f,  0.0f, 1.0f, 1.0f },
+			{  0.0f, 1.0f }
 		},
 		{
 			{0.5f, -0.5f, -0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f}
+			{0.3f, 0.2f, 0.6f, 1.0f},
+			{1.0f, 1.0f}
+		},
+		//Left
+		{
+			{ -0.5f, 0.5f, 0.5f },
+			{  1.0f, 0.0f, 0.0f, 1.0f },
+			{  1.0f, 0.0f }
+		},
+		{
+			{  -0.5f, 0.5f, -0.5f },
+			{  0.0f, 1.0f, 0.0f, 1.0f },
+			{  0.0f, 0.0f }
+		},
+		{
+			{ -0.5f, -0.5f, -0.5f },
+			{  0.0f,  0.0f, 1.0f, 1.0f },
+			{  0.0f, 1.0f }
+		},
+		{
+			{ -0.5f, -0.5f, 0.5f},
+			{0.3f, 0.2f, 0.6f, 1.0f},
+			{1.0f, 1.0f}
+		},
+		//Back
+		{
+			{  -0.5f, 0.5f, -0.5f },
+			{  1.0f, 0.0f, 0.0f, 1.0f },
+			{  1.0f, 0.0f }
+		},
+		{
+			{  0.5f, 0.5f, -0.5f },
+			{  0.0f, 1.0f, 0.0f, 1.0f },
+			{  0.0f, 0.0f }
+		},
+		{
+			{  0.5f, -0.5f, -0.5f },
+			{  0.0f,  0.0f, 1.0f, 1.0f },
+			{  0.0f, 1.0f }
+		},
+		{
+			{ -0.5f, -0.5f, -0.5f},
+			{0.3f, 0.2f, 0.6f, 1.0f},
+			{1.0f, 1.0f}
+		},
+		//Bottom
+		{
+			{  0.5f, -0.5f, -0.5f },
+			{  1.0f, 0.0f, 0.0f, 1.0f },
+			{  1.0f, 0.0f }
+		},
+		{
+			{  -0.5f, -0.5f, -0.5f },
+			{  0.0f, 1.0f, 0.0f, 1.0f },
+			{  0.0f, 0.0f }
+		},
+		{
+			{ -0.5f, -0.5f, 0.5f },
+			{  0.0f,  0.0f, 1.0f, 1.0f },
+			{  0.0f, 1.0f }
+		},
+		{
+			{0.5f, -0.5f, 0.5f},
+			{0.3f, 0.2f, 0.6f, 1.0f},
+			{1.0f, 1.0f}
 		}
 	};
 
@@ -458,19 +571,20 @@ bool Renderer::CreateVertexBuffer()
 
 bool Renderer::CreateIndexBuffer()
 {
+	//Front Top Right Left Back Bottom
 	UINT16 Indices[] = {
 		0, 2, 1,
 		0, 3, 2,
 		4,6,5,
 		4,7,6,
-		4,1,5,
-		4,0,1,
-		7,2,6,
-		7,3,2,
-		5,1,6,
-		1,2,6,
-		0,4,7,
-		0,7,3
+		8,10,9,
+		8,11,10,
+		12,14,13,
+		12,15,14,
+		16,18,17,
+		16,19,18,
+		20,22,21,
+		20,23,22
 	};
 
 	if (!CreateDefaultBuffer(Indices, sizeof(Indices), D3D12_RESOURCE_STATE_INDEX_BUFFER, IndexBuffer))
@@ -608,6 +722,134 @@ bool Renderer::CreateDepthBuffer()
 
 	D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle = DSVHeap->GetCPUDescriptorHandleForHeapStart();
 	Device.GetDevice()->CreateDepthStencilView(DepthBuffer, &DSVDesc, DSVHandle);
+
+	return true;
+}
+
+bool Renderer::CreateTexture()
+{
+	uint8_t Pixels[] = {
+		255,0,0,255,
+		0,255,0,255,
+		0,0,255,255,
+		255,255,0,255
+	};
+
+	D3D12_RESOURCE_DESC TextureDesc{};
+	TextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	TextureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	TextureDesc.MipLevels = 1;
+	TextureDesc.Alignment = 0;
+	TextureDesc.Width = 2;
+	TextureDesc.Height = 2;
+	TextureDesc.DepthOrArraySize = 1;
+	TextureDesc.SampleDesc.Count = 1;
+	TextureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	TextureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	D3D12_HEAP_PROPERTIES DefaultHeapProperties{};
+	DefaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &TextureDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&Texture));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT FootPrint{};
+	UINT NumRow;
+	UINT64 RowSize;
+	UINT64 UploadBufferSize;
+	Device.GetDevice()->GetCopyableFootprints(&TextureDesc, 0, 1, 0, &FootPrint, &NumRow, &RowSize, &UploadBufferSize);
+
+	ID3D12Resource* TextureUploadBuffer = nullptr;
+
+	D3D12_RESOURCE_DESC UploadDesc{};
+	UploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	UploadDesc.Width = UploadBufferSize;
+	UploadDesc.Height = 1;
+	UploadDesc.MipLevels = 1;
+	UploadDesc.DepthOrArraySize = 1;
+	UploadDesc.SampleDesc.Count = 1;
+	UploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	D3D12_HEAP_PROPERTIES UploadHeapProperties{};
+	UploadHeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+	Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &UploadDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&TextureUploadBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	uint8_t* MappedData = nullptr;
+	TextureUploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData));
+	for (int i = 0; i < NumRow; i++)
+	{
+		uint8_t* Dest = MappedData + FootPrint.Offset + i * FootPrint.Footprint.RowPitch;
+		const uint8_t* Src = Pixels + i * RowSize;
+
+		memcpy(Dest, Src, RowSize);
+	}
+
+	D3D12_TEXTURE_COPY_LOCATION Dst{};
+	Dst.pResource = Texture;
+	Dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	Dst.SubresourceIndex = 0;
+
+	D3D12_TEXTURE_COPY_LOCATION Src{};
+	Src.pResource = TextureUploadBuffer;
+	Src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	Src.PlacedFootprint = FootPrint;
+
+	TextureUploadBuffer->Unmap(0, nullptr);
+
+	CommandContext.Reset(Frame[0].CommandAllocator);
+	CommandContext.GetCommandList()->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
+	
+	D3D12_RESOURCE_BARRIER Barrier{};
+	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	Barrier.Transition.pResource = Texture;
+	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandContext.GetCommandList()->ResourceBarrier(1, &Barrier);
+
+	CommandContext.Close();
+
+	CommandQueue.Execute(&CommandContext);
+
+	UINT64 FenceValue = CommandQueue.Signal();
+	if (FenceValue == 0)
+	{
+		return false;
+	}
+	CommandQueue.WaitForFence(FenceValue);
+
+	TextureUploadBuffer->Release();
+	TextureUploadBuffer = nullptr;
+
+	D3D12_DESCRIPTOR_HEAP_DESC SRVHeapDesc{};
+	SRVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	SRVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	SRVHeapDesc.NumDescriptors = 1;
+	SRVHeapDesc.NodeMask = 0;
+
+	Result = Device.GetDevice()->CreateDescriptorHeap(&SRVHeapDesc, IID_PPV_ARGS(&SRVHeap));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
+	SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	SRVDesc.Texture2D.MipLevels = 1;
+
+	Device.GetDevice()->CreateShaderResourceView(Texture, &SRVDesc, SRVHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
 }

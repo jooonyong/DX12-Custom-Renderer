@@ -2,12 +2,14 @@ struct VSInput
 {
     float3 Position : POSITION;
     float4 Color    : COLOR;
+    float2 UV       : TEXCOORD;
 };
 
 struct VSOutput
 {
     float4 Position : SV_POSITION;
     float4 Color    : COLOR;
+    float2 UV       : TEXCOORD;
 };
 
 cbuffer TransformBuffer : register(b0)
@@ -26,11 +28,13 @@ VSOutput VSMain(VSInput Input)
     Output.Position = mul(Output.Position, Projection);
 
     Output.Color = Input.Color;
+    Output.UV = Input.UV;
 
     return Output;
 }
 
 float4 PSMain(VSOutput Input) : SV_TARGET
 {
-    return Input.Color;
+    return float4(Input.UV.x, Input.UV.y, 0.0f, 1.0f);
+    //return Input.Color;
 }
