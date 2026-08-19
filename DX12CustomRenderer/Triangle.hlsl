@@ -1,3 +1,6 @@
+Texture2D AlbedoTexture : register(t0);
+SamplerState LinearSampler : register(s0);
+
 struct VSInput
 {
     float3 Position : POSITION;
@@ -35,6 +38,5 @@ VSOutput VSMain(VSInput Input)
 
 float4 PSMain(VSOutput Input) : SV_TARGET
 {
-    return float4(Input.UV.x, Input.UV.y, 0.0f, 1.0f);
-    //return Input.Color;
+    return AlbedoTexture.Sample(LinearSampler, Input.UV);
 }

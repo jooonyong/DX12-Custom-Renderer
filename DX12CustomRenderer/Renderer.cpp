@@ -196,7 +196,13 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	//삼각형 그리기
 	CommandList->SetPipelineState(PipelineState);
 	CommandList->SetGraphicsRootSignature(RootSignature);
+	
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVHeap };
+	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
+
 	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.ConstantBuffer->GetGPUVirtualAddress());
+	CommandList->SetGraphicsRootDescriptorTable(1, SRVHeap->GetGPUDescriptorHandleForHeapStart());
+	
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
@@ -230,18 +236,45 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 
 bool Renderer::CreateRootSignature()
 {
-	D3D12_ROOT_PARAMETER RootParameter{};
-	RootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-	RootParameter.Descriptor.ShaderRegister = 0; // b0
-	RootParameter.Descriptor.RegisterSpace = 0;
-	RootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+	D3D12_DESCRIPTOR_RANGE SRVRange{};
+	SRVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	SRVRange.RegisterSpace = 0;
+	SRVRange.NumDescriptors = 1;
+	SRVRange.BaseShaderRegister = 0; //t0
+	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[2]{};
+	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
+	RootParameters[0].Descriptor.RegisterSpace = 0;
+	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[1].DescriptorTable.pDescriptorRanges = &SRVRange;
+	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
+	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.MipLODBias = 0.0f;
+	SamplerDesc.MaxAnisotropy = 1;
+	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	SamplerDesc.MinLOD = 0.0f;
+	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	SamplerDesc.ShaderRegister = 0; ///s0
+	SamplerDesc.RegisterSpace = 0;
+	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc;
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 1;
-	RootDesc.NumStaticSamplers = 0;
-	RootDesc.pParameters = &RootParameter;
-	RootDesc.pStaticSamplers = nullptr;
+	RootDesc.NumParameters = 2;
+	RootDesc.NumStaticSamplers = 1;
+	RootDesc.pParameters = RootParameters;
+	RootDesc.pStaticSamplers = &SamplerDesc;
 
 	ID3DBlob* SerializedRootSignature;
 	ID3DBlob* ErrorBlob;
