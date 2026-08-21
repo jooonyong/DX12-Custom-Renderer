@@ -6,6 +6,11 @@
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
+#include <vector>
+#include <wincodec.h>
+#include <wrl.h>
+
+#pragma comment(lib, "windowscodecs.lib")
 
 class IDxcBlob;
 class Camera;
@@ -43,6 +48,8 @@ public:
 	bool CreateIndexBuffer();
 	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, ID3D12Resource*& OutBuffer);
 	bool CreateDepthBuffer();
+
+	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
 	bool CreateTexture();
 
 	void UpdateViewport(UINT Width, UINT Height);

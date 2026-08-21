@@ -759,22 +759,74 @@ bool Renderer::CreateDepthBuffer()
 	return true;
 }
 
+bool Renderer::LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth, UINT& OutHeight)
+{
+	Microsoft::WRL::ComPtr<IWICImagingFactory> Factory;
+	HRESULT Result = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(Factory.GetAddressOf()));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	Microsoft::WRL::ComPtr<IWICBitmapDecoder> Decoder;
+	Result = Factory->CreateDecoderFromFilename(FilePath, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, Decoder.GetAddressOf());
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> Frame;
+	Result = Decoder->GetFrame(0, Frame.GetAddressOf());
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	Frame->GetSize(&OutWidth, &OutHeight);
+
+	Microsoft::WRL::ComPtr<IWICFormatConverter> Converter;
+	Result = Factory->CreateFormatConverter(Converter.GetAddressOf());
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	Result = Converter->Initialize(Frame.Get(), GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone,
+		nullptr, 0.0, WICBitmapPaletteTypeCustom);
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	const UINT BytesPerPixel = 4;
+	const UINT RowPitch = OutWidth * BytesPerPixel;
+	const UINT ImageSize = RowPitch * OutHeight;
+	OutPixels.resize(ImageSize);
+
+	Result = Converter->CopyPixels(nullptr,	RowPitch, ImageSize, OutPixels.data());
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	return true;
+}
+
 bool Renderer::CreateTexture()
 {
-	uint8_t Pixels[] = {
-		255,0,0,255,
-		0,255,0,255,
-		0,0,255,255,
-		255,255,0,255
-	};
+	std::vector<uint8_t> OutPixels;
+	UINT TextureWidth = 0;
+	UINT TextureHeight = 0;
+	if (!LoadImage( L"Assets/Test.jpg", OutPixels, TextureWidth, TextureHeight))
+	{
+		return false;
+	}
 
 	D3D12_RESOURCE_DESC TextureDesc{};
 	TextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	TextureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	TextureDesc.MipLevels = 1;
 	TextureDesc.Alignment = 0;
-	TextureDesc.Width = 2;
-	TextureDesc.Height = 2;
+	TextureDesc.Width = TextureWidth;
+	TextureDesc.Height = TextureHeight;
 	TextureDesc.DepthOrArraySize = 1;
 	TextureDesc.SampleDesc.Count = 1;
 	TextureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -820,8 +872,8 @@ bool Renderer::CreateTexture()
 	TextureUploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData));
 	for (int i = 0; i < NumRow; i++)
 	{
+		const uint8_t* Src = OutPixels.data() + i * RowSize;
 		uint8_t* Dest = MappedData + FootPrint.Offset + i * FootPrint.Footprint.RowPitch;
-		const uint8_t* Src = Pixels + i * RowSize;
 
 		memcpy(Dest, Src, RowSize);
 	}

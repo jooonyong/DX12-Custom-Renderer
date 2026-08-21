@@ -23,6 +23,9 @@ bool WindowsWindow::Initialize(HINSTANCE Instance, UINT32 Width, UINT32 Height, 
 	}
 
 	SetWindowLongPtr(Hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+
+	CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
 	return true;
 }
 
