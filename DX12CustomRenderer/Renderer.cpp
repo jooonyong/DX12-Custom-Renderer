@@ -104,6 +104,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!ResourceUploader.Initialize(&Device, &CommandQueue, &CommandContext, Frame[0].CommandAllocator))
+	{
+		return false;
+	}
 
 	UpdateViewport(Width, Height);
 
@@ -120,13 +124,20 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!ResourceUploader.Begin())
+	{
+		return false;
+	}
 
 	CubeMesh = CreateMesh(GeometryGenerator::CreateCube());
 	if (!CubeMesh)
 	{
 		return false;
 	}
-
+	if (!ResourceUploader.End())
+	{
+		return false;
+	}
 	if (!CreateDepthBuffer())
 	{
 		return false;
@@ -759,15 +770,17 @@ std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
 
 	const UINT VertexBufferSize = Data.Vertices.size() * sizeof(Vertex);
 	const UINT IndexBufferSize = Data.Indices.size() * sizeof(uint32_t);
-
-	if (!CreateDefaultBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer))
+	
+	ResourceUploader.UploadBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer);
+	ResourceUploader.UploadBuffer(Data.Indices.data(), IndexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, LocalIndexBuffer);
+	/*if (!CreateDefaultBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer))
 	{
 		return nullptr;
 	}
 	if (!CreateDefaultBuffer(Data.Indices.data(), IndexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, LocalIndexBuffer))
 	{
 		return nullptr;
-	}
+	}*/
 
 	return std::make_unique<Mesh>(std::move(LocalVertexBuffer), VertexBufferSize, sizeof(Vertex),
 		std::move(LocalIndexBuffer), IndexBufferSize, static_cast<UINT>(Data.Indices.size()));

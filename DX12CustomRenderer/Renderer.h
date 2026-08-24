@@ -3,6 +3,7 @@
 #include "D3D12CommandQueue.h"
 #include "D3D12CommandContext.h"
 #include "D3D12SwapChain.h"
+#include "D3D12ResourceUploader.h"
 #include "Mesh.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
@@ -62,6 +63,8 @@ private:
 	Microsoft::WRL::ComPtr<IDxcBlob> PixelShader;
 
 	ID3D12PipelineState* PipelineState = nullptr;
+	
+	D3D12ResourceUploader ResourceUploader{};
 	std::unique_ptr<Mesh> CubeMesh = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;
