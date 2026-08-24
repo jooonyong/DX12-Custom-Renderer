@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include "Camera.h"
+#include "GeometryGenerator.h"
 
 Renderer::~Renderer()
 {
@@ -29,16 +30,6 @@ Renderer::~Renderer()
 			Frame[i].ConstantBuffer->Release();
 			Frame[i].ConstantBufferMappedData = nullptr;
 		}
-	}
-	if (VertexBuffer)
-	{
-		VertexBuffer->Release();
-		VertexBuffer = nullptr;
-	}
-	if (IndexBuffer)
-	{
-		IndexBuffer->Release();
-		IndexBuffer = nullptr;
 	}
 	if (DepthBuffer)
 	{
@@ -130,16 +121,13 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	if (!CreateDepthBuffer())
+	CubeMesh = CreateMesh(GeometryGenerator::CreateCube());
+	if (!CubeMesh)
 	{
 		return false;
 	}
 
-	if (!CreateVertexBuffer())
-	{
-		return false;
-	}
-	if (!CreateIndexBuffer())
+	if (!CreateDepthBuffer())
 	{
 		return false;
 	}
@@ -209,11 +197,14 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
 	CommandList->OMSetRenderTargets(1, &RTV, FALSE, &DSV);
 
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = CubeMesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView =	CubeMesh->GetIndexBufferView();
+
 	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
 	
-	CommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+	CommandList->DrawIndexedInstanced(CubeMesh->GetIndexCount(), 1, 0, 0, 0);
 	
 	//CommandList->DrawInstanced(3, 1, 0, 0);
 
@@ -454,185 +445,7 @@ bool Renderer::CreatePipelineState()
 	return true;
 }
 
-bool Renderer::CreateVertexBuffer()
-{
-	//cube 정점 8개->24개(각 vertex의 UV, normal을 면 별로 공유하지 않으므로)
-	Vertex Vertices[] =
-	{
-		//Front
-		{
-			{  0.5f, 0.5f, 0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f },
-			{  1.0f, 0.0f }
-		},
-
-		{
-			{  -0.5f, 0.5f, 0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f },
-			{  0.0f, 0.0f }
-		},
-
-		{
-			{ -0.5f, -0.5f, 0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f },
-			{ 0.0f, 1.0f }
-		},
-		{
-			{0.5f, -0.5f, 0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f},
-			{1.0f, 1.0f}
-		},
-		//Top
-		{
-			{  0.5f, 0.5f, -0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f },
-			{  1.0f, 0.0f }
-		},
-
-		{
-			{  -0.5f, 0.5f, -0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f },
-			{  0.0f, 0.0f }
-		},
-		{
-			{ -0.5f, 0.5f, 0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f },
-			{  0.0f, 1.0f }
-		},
-		{
-			{0.5f, 0.5f, 0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f},
-			{1.0f, 1.0f}
-		},
-		//Right
-		{
-			{ 0.5f, 0.5f, -0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f },
-			{  1.0f, 0.0f }
-		},
-		{
-			{  0.5f, 0.5f, 0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f },
-			{  0.0f, 0.0f }
-		},
-		{
-			{  0.5f, -0.5f, 0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f },
-			{  0.0f, 1.0f }
-		},
-		{
-			{0.5f, -0.5f, -0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f},
-			{1.0f, 1.0f}
-		},
-		//Left
-		{
-			{ -0.5f, 0.5f, 0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f },
-			{  1.0f, 0.0f }
-		},
-		{
-			{  -0.5f, 0.5f, -0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f },
-			{  0.0f, 0.0f }
-		},
-		{
-			{ -0.5f, -0.5f, -0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f },
-			{  0.0f, 1.0f }
-		},
-		{
-			{ -0.5f, -0.5f, 0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f},
-			{1.0f, 1.0f}
-		},
-		//Back
-		{
-			{  -0.5f, 0.5f, -0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f },
-			{  1.0f, 0.0f }
-		},
-		{
-			{  0.5f, 0.5f, -0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f },
-			{  0.0f, 0.0f }
-		},
-		{
-			{  0.5f, -0.5f, -0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f },
-			{  0.0f, 1.0f }
-		},
-		{
-			{ -0.5f, -0.5f, -0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f},
-			{1.0f, 1.0f}
-		},
-		//Bottom
-		{
-			{  0.5f, -0.5f, -0.5f },
-			{  1.0f, 0.0f, 0.0f, 1.0f },
-			{  1.0f, 0.0f }
-		},
-		{
-			{  -0.5f, -0.5f, -0.5f },
-			{  0.0f, 1.0f, 0.0f, 1.0f },
-			{  0.0f, 0.0f }
-		},
-		{
-			{ -0.5f, -0.5f, 0.5f },
-			{  0.0f,  0.0f, 1.0f, 1.0f },
-			{  0.0f, 1.0f }
-		},
-		{
-			{0.5f, -0.5f, 0.5f},
-			{0.3f, 0.2f, 0.6f, 1.0f},
-			{1.0f, 1.0f}
-		}
-	};
-
-	if (!CreateDefaultBuffer(Vertices, sizeof(Vertices), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, VertexBuffer))
-	{
-		return false;
-	}
-
-	VBView.BufferLocation = VertexBuffer->GetGPUVirtualAddress();
-	VBView.SizeInBytes = sizeof(Vertices);
-	VBView.StrideInBytes = sizeof(Vertex);
-
-	return true;
-}
-
-bool Renderer::CreateIndexBuffer()
-{
-	//Front Top Right Left Back Bottom
-	UINT16 Indices[] = {
-		0, 2, 1,
-		0, 3, 2,
-		4,6,5,
-		4,7,6,
-		8,10,9,
-		8,11,10,
-		12,14,13,
-		12,15,14,
-		16,18,17,
-		16,19,18,
-		20,22,21,
-		20,23,22
-	};
-
-	if (!CreateDefaultBuffer(Indices, sizeof(Indices), D3D12_RESOURCE_STATE_INDEX_BUFFER, IndexBuffer))
-	{
-		return false;
-	}
-
-	IBView.BufferLocation = IndexBuffer->GetGPUVirtualAddress();
-	IBView.SizeInBytes = sizeof(Indices);
-	IBView.Format = DXGI_FORMAT_R16_UINT;
-
-	return true;
-}
-
-bool Renderer::CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, ID3D12Resource*& OutBuffer)
+bool Renderer::CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer)
 {
 	//ex) Vertices
 	ID3D12Resource* UploadBuffer = nullptr;
@@ -670,18 +483,18 @@ bool Renderer::CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE
 	DefaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
 
 	Result = Device.GetDevice()->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE,
-		&BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&OutBuffer));
+		&BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(OutBuffer.ReleaseAndGetAddressOf()));
 	if (FAILED(Result))
 	{
 		return false;
 	}
 
 	CommandContext.Reset(Frame[0].CommandAllocator);
-	CommandContext.GetCommandList()->CopyBufferRegion(OutBuffer, 0, UploadBuffer, 0, Size);
+	CommandContext.GetCommandList()->CopyBufferRegion(OutBuffer.Get(), 0, UploadBuffer, 0, Size);
 
 	D3D12_RESOURCE_BARRIER ResourceBarrier{};
 	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	ResourceBarrier.Transition.pResource = OutBuffer;
+	ResourceBarrier.Transition.pResource = OutBuffer.Get();
 	ResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
 	ResourceBarrier.Transition.StateAfter = FinalState;
 	ResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -937,6 +750,27 @@ bool Renderer::CreateTexture()
 	Device.GetDevice()->CreateShaderResourceView(Texture, &SRVDesc, SRVHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
+}
+
+std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
+{
+	Microsoft::WRL::ComPtr<ID3D12Resource> LocalVertexBuffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource> LocalIndexBuffer;
+
+	const UINT VertexBufferSize = Data.Vertices.size() * sizeof(Vertex);
+	const UINT IndexBufferSize = Data.Indices.size() * sizeof(uint32_t);
+
+	if (!CreateDefaultBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer))
+	{
+		return nullptr;
+	}
+	if (!CreateDefaultBuffer(Data.Indices.data(), IndexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, LocalIndexBuffer))
+	{
+		return nullptr;
+	}
+
+	return std::make_unique<Mesh>(std::move(LocalVertexBuffer), VertexBufferSize, sizeof(Vertex),
+		std::move(LocalIndexBuffer), IndexBufferSize, static_cast<UINT>(Data.Indices.size()));
 }
 
 

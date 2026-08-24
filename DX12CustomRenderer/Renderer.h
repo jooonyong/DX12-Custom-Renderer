@@ -3,10 +3,12 @@
 #include "D3D12CommandQueue.h"
 #include "D3D12CommandContext.h"
 #include "D3D12SwapChain.h"
+#include "Mesh.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
 #include <vector>
+#include <memory>
 #include <wincodec.h>
 #include <wrl.h>
 
@@ -14,13 +16,6 @@
 
 class IDxcBlob;
 class Camera;
-
-struct Vertex
-{
-	float Position[3];
-	float Color[4];
-	float UV[2];
-};
 
 struct TransformConstant
 {
@@ -44,13 +39,12 @@ public:
 
 	bool CreatePipelineState();
 
-	bool CreateVertexBuffer();
-	bool CreateIndexBuffer();
-	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, ID3D12Resource*& OutBuffer);
+	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer);
 	bool CreateDepthBuffer();
 
 	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
 	bool CreateTexture();
+	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
 	void UpdateViewport(UINT Width, UINT Height);
 
@@ -68,12 +62,7 @@ private:
 	Microsoft::WRL::ComPtr<IDxcBlob> PixelShader;
 
 	ID3D12PipelineState* PipelineState = nullptr;
-
-	ID3D12Resource* VertexBuffer = nullptr;
-	D3D12_VERTEX_BUFFER_VIEW VBView;
-
-	ID3D12Resource* IndexBuffer = nullptr;
-	D3D12_INDEX_BUFFER_VIEW IBView;
+	std::unique_ptr<Mesh> CubeMesh = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
