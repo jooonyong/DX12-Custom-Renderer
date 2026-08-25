@@ -19,6 +19,15 @@
 class IDxcBlob;
 class Camera;
 class Texture;
+class Material;
+
+struct FrameResource
+{
+	ID3D12CommandAllocator* CommandAllocator = nullptr;
+	UINT FenceValue = 0;
+	ID3D12Resource* ConstantBuffer = nullptr;
+	void* ConstantBufferMappedData = nullptr;
+};
 
 struct TransformConstant
 {
@@ -47,7 +56,7 @@ public:
 	bool CreateDepthBuffer();
 
 	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
-	std::unique_ptr<Texture> CreateTexture(const wchar_t* FilePath);
+	std::shared_ptr<Texture> CreateTexture(const wchar_t* FilePath);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
 	void UpdateViewport(UINT Width, UINT Height);
@@ -71,7 +80,7 @@ private:
 	D3D12DescriptorAllocator SRVDescriptorAllocator;
 
 	std::unique_ptr<Mesh> CubeMesh = nullptr;
-	std::unique_ptr<Texture> AlbedoTexture = nullptr;
+	std::shared_ptr<Material> CubeMaterial = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;

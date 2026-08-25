@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "Camera.h"
 #include "Texture.h"
+#include "Material.h"
 #include "GeometryGenerator.h"
 
 Renderer::Renderer() = default;
@@ -130,11 +131,23 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	AlbedoTexture = CreateTexture(L"Assets/Test.jpg");
+
+	std::shared_ptr<Texture> AlbedoTexture = CreateTexture(L"Assets/Test.jpg");
 	if (!AlbedoTexture)
 	{
 		return false;
 	}
+
+	CubeMaterial = std::make_shared<Material>(AlbedoTexture, DirectX::XMFLOAT4(1.0f,0.6f,0.4f,1.0f), 0.3f, 0.1f);
+	if (!CubeMaterial)
+	{
+		return false;
+	}
+	if (!CubeMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
+	{
+		return false;
+	}
+
 	if (!ResourceUploader.End())
 	{
 		return false;
@@ -190,6 +203,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 
 	memcpy(CurrentFrame.ConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
 
+	CubeMaterial->UpdateGPU(CurrentIndex);
 	//삼각형 그리기
 	CommandList->SetPipelineState(PipelineState);
 	CommandList->SetGraphicsRootSignature(RootSignature);
@@ -197,8 +211,9 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap()};
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
-	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.ConstantBuffer->GetGPUVirtualAddress());
-	CommandList->SetGraphicsRootDescriptorTable(1, AlbedoTexture->GetSRV().GPU);
+	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.ConstantBuffer->GetGPUVirtualAddress()); //b0
+	CommandList->SetGraphicsRootDescriptorTable(1, CubeMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
+	CommandList->SetGraphicsRootConstantBufferView(2, CubeMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
 	
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -243,16 +258,21 @@ bool Renderer::CreateRootSignature()
 	SRVRange.BaseShaderRegister = 0; //t0
 	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[2]{};
+	D3D12_ROOT_PARAMETER RootParameters[3]{};
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
 	RootParameters[0].Descriptor.RegisterSpace = 0;
 	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
 	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1; 
 	RootParameters[1].DescriptorTable.pDescriptorRanges = &SRVRange;
 	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	RootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[2].Descriptor.ShaderRegister = 1; // b1
+	RootParameters[2].Descriptor.RegisterSpace = 0;
+	RootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -271,7 +291,7 @@ bool Renderer::CreateRootSignature()
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc;
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 2;
+	RootDesc.NumParameters = 3;
 	RootDesc.NumStaticSamplers = 1;
 	RootDesc.pParameters = RootParameters;
 	RootDesc.pStaticSamplers = &SamplerDesc;
@@ -632,7 +652,7 @@ bool Renderer::LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixel
 	return true;
 }
 
-std::unique_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath)
+std::shared_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath)
 {
 	std::vector<uint8_t> OutPixels;
 	UINT TextureWidth = 0;
@@ -658,7 +678,7 @@ std::unique_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath)
 
 	Device.GetDevice()->CreateShaderResourceView(TextureResource.Get(), &SRVDesc, TextureSRV.CPU);
 
-	return std::make_unique<Texture>(std::move(TextureResource), TextureSRV, TextureWidth, TextureHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
+	return std::make_shared<Texture>(std::move(TextureResource), TextureSRV, TextureWidth, TextureHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
 }
 
 std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)

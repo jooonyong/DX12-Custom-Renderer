@@ -22,6 +22,14 @@ cbuffer TransformBuffer : register(b0)
     float4x4 Projection;
 }
 
+cbuffer MaterialBuffer : register(b1)
+{
+    float4 BaseColor;
+    float Roughness;
+    float Metallic;
+    float2 MaterialPadding;
+}
+
 VSOutput VSMain(VSInput Input)
 {
     VSOutput Output;
@@ -38,5 +46,8 @@ VSOutput VSMain(VSInput Input)
 
 float4 PSMain(VSOutput Input) : SV_TARGET
 {
-    return AlbedoTexture.Sample(LinearSampler, Input.UV);
+    //return AlbedoTexture.Sample(LinearSampler, Input.UV);
+    float4 Albedo = AlbedoTexture.Sample(LinearSampler, Input.UV);
+
+    return Albedo * BaseColor;
 }
