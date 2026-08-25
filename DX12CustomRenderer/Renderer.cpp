@@ -1,7 +1,9 @@
 #include "Renderer.h"
 #include "Camera.h"
+#include "Texture.h"
 #include "GeometryGenerator.h"
 
+Renderer::Renderer() = default;
 Renderer::~Renderer()
 {
 	if (CommandQueue.GetNativeCommandQueue())
@@ -40,11 +42,6 @@ Renderer::~Renderer()
 	{
 		DSVHeap->Release();
 		DSVHeap = nullptr;
-	}
-	if (Texture)
-	{
-		Texture->Release();
-		Texture = nullptr;
 	}
 }
 
@@ -133,7 +130,8 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	if (!CreateTexture(L"Assets/Test.jpg"))
+	AlbedoTexture = CreateTexture(L"Assets/Test.jpg");
+	if (!AlbedoTexture)
 	{
 		return false;
 	}
@@ -200,7 +198,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
 	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.ConstantBuffer->GetGPUVirtualAddress());
-	CommandList->SetGraphicsRootDescriptorTable(1, TextureSRV.GPU);
+	CommandList->SetGraphicsRootDescriptorTable(1, AlbedoTexture->GetSRV().GPU);
 	
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -634,22 +632,23 @@ bool Renderer::LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixel
 	return true;
 }
 
-bool Renderer::CreateTexture(const wchar_t* FilePath)
+std::unique_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath)
 {
 	std::vector<uint8_t> OutPixels;
 	UINT TextureWidth = 0;
 	UINT TextureHeight = 0;
 	if (!LoadImage( FilePath, OutPixels, TextureWidth, TextureHeight))
 	{
-		return false;
+		return nullptr;
 	}
 
-	if (!ResourceUploader.UploadTexture(OutPixels.data(), TextureWidth, TextureHeight, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, Texture))
+	Microsoft::WRL::ComPtr<ID3D12Resource> TextureResource;
+	if (!ResourceUploader.UploadTexture(OutPixels.data(), TextureWidth, TextureHeight, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, TextureResource))
 	{
-		return false;
+		return nullptr;
 	}
 
-	TextureSRV = SRVDescriptorAllocator.Allocate();
+	D3D12DescriptorHandle TextureSRV = SRVDescriptorAllocator.Allocate();
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
 	SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -657,9 +656,9 @@ bool Renderer::CreateTexture(const wchar_t* FilePath)
 	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	SRVDesc.Texture2D.MipLevels = 1;
 
-	Device.GetDevice()->CreateShaderResourceView(Texture.Get(), &SRVDesc, TextureSRV.CPU);
+	Device.GetDevice()->CreateShaderResourceView(TextureResource.Get(), &SRVDesc, TextureSRV.CPU);
 
-	return true;
+	return std::make_unique<Texture>(std::move(TextureResource), TextureSRV, TextureWidth, TextureHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
 }
 
 std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
@@ -692,7 +691,7 @@ void Renderer::UpdateViewport(UINT Width, UINT Height)
 
 	ScissorRect.left = 0.0f;
 	ScissorRect.top = 0.0f;
-	ScissorRect.right = static_cast<float>(Width);
-	ScissorRect.bottom = static_cast<float>(Height);
+	ScissorRect.right = static_cast<LONG>(Width);
+	ScissorRect.bottom = static_cast<LONG>(Height);
 }
 

@@ -18,6 +18,7 @@
 
 class IDxcBlob;
 class Camera;
+class Texture;
 
 struct TransformConstant
 {
@@ -29,6 +30,7 @@ struct TransformConstant
 class Renderer
 {
 public:
+	Renderer();
 	~Renderer();
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
@@ -45,7 +47,7 @@ public:
 	bool CreateDepthBuffer();
 
 	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
-	bool CreateTexture(const wchar_t* FilePath);
+	std::unique_ptr<Texture> CreateTexture(const wchar_t* FilePath);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
 	void UpdateViewport(UINT Width, UINT Height);
@@ -67,14 +69,12 @@ private:
 	
 	D3D12ResourceUploader ResourceUploader{};
 	D3D12DescriptorAllocator SRVDescriptorAllocator;
-	D3D12DescriptorHandle TextureSRV;
 
 	std::unique_ptr<Mesh> CubeMesh = nullptr;
+	std::unique_ptr<Texture> AlbedoTexture = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
-
-	Microsoft::WRL::ComPtr<ID3D12Resource> Texture = nullptr;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;
