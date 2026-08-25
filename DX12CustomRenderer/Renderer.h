@@ -4,6 +4,7 @@
 #include "D3D12CommandContext.h"
 #include "D3D12SwapChain.h"
 #include "D3D12ResourceUploader.h"
+#include "D3D12DescriptorAllocator.h"
 #include "Mesh.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
@@ -65,13 +66,15 @@ private:
 	ID3D12PipelineState* PipelineState = nullptr;
 	
 	D3D12ResourceUploader ResourceUploader{};
+	D3D12DescriptorAllocator SRVDescriptorAllocator;
+	D3D12DescriptorHandle TextureSRV;
+
 	std::unique_ptr<Mesh> CubeMesh = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> Texture = nullptr;
-	ID3D12DescriptorHeap* SRVHeap = nullptr;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;

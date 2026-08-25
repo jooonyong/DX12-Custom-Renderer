@@ -46,11 +46,6 @@ Renderer::~Renderer()
 		Texture->Release();
 		Texture = nullptr;
 	}
-	if (SRVHeap)
-	{
-		SRVHeap->Release();
-		SRVHeap = nullptr;
-	}
 }
 
 bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
@@ -105,6 +100,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 	if (!ResourceUploader.Initialize(&Device, &CommandQueue, &CommandContext, Frame[0].CommandAllocator))
+	{
+		return false;
+	}
+	if (!SRVDescriptorAllocator.Initialize(&Device, 256))
 	{
 		return false;
 	}
@@ -197,11 +196,11 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->SetPipelineState(PipelineState);
 	CommandList->SetGraphicsRootSignature(RootSignature);
 	
-	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVHeap };
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap()};
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
 	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.ConstantBuffer->GetGPUVirtualAddress());
-	CommandList->SetGraphicsRootDescriptorTable(1, SRVHeap->GetGPUDescriptorHandleForHeapStart());
+	CommandList->SetGraphicsRootDescriptorTable(1, TextureSRV.GPU);
 	
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -650,17 +649,7 @@ bool Renderer::CreateTexture(const wchar_t* FilePath)
 		return false;
 	}
 
-	D3D12_DESCRIPTOR_HEAP_DESC SRVHeapDesc{};
-	SRVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	SRVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	SRVHeapDesc.NumDescriptors = 1;
-	SRVHeapDesc.NodeMask = 0;
-
-	HRESULT Result = Device.GetDevice()->CreateDescriptorHeap(&SRVHeapDesc, IID_PPV_ARGS(&SRVHeap));
-	if (FAILED(Result))
-	{
-		return false;
-	}
+	TextureSRV = SRVDescriptorAllocator.Allocate();
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
 	SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -668,7 +657,7 @@ bool Renderer::CreateTexture(const wchar_t* FilePath)
 	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	SRVDesc.Texture2D.MipLevels = 1;
 
-	Device.GetDevice()->CreateShaderResourceView(Texture.Get(), &SRVDesc, SRVHeap->GetCPUDescriptorHandleForHeapStart());
+	Device.GetDevice()->CreateShaderResourceView(Texture.Get(), &SRVDesc, TextureSRV.CPU);
 
 	return true;
 }

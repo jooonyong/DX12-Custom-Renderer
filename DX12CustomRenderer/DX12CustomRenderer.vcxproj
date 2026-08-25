@@ -130,6 +130,7 @@
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="D3D12CommandContext.cpp" />
     <ClCompile Include="D3D12CommandQueue.cpp" />
+    <ClCompile Include="D3D12DescriptorAllocator.cpp" />
     <ClCompile Include="D3D12Device.cpp" />
     <ClCompile Include="D3D12ResourceUploader.cpp" />
     <ClCompile Include="D3D12SwapChain.cpp" />
@@ -144,6 +145,7 @@
     <ClInclude Include="Camera.h" />
     <ClInclude Include="D3D12CommandContext.h" />
     <ClInclude Include="D3D12CommandQueue.h" />
+    <ClInclude Include="D3D12DescriptorAllocator.h" />
     <ClInclude Include="D3D12Device.h" />
     <ClInclude Include="D3D12ResourceUploader.h" />
     <ClInclude Include="D3D12SwapChain.h" />

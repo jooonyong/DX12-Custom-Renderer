@@ -66,6 +66,9 @@
     <ClCompile Include="D3D12ResourceUploader.cpp">
       <Filter>Source\RHI\D3D12</Filter>
     </ClCompile>
+    <ClCompile Include="D3D12DescriptorAllocator.cpp">
+      <Filter>Source\RHI\D3D12</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -102,6 +105,9 @@
       <Filter>Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="D3D12ResourceUploader.h">
+      <Filter>Source\RHI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12DescriptorAllocator.h">
       <Filter>Source\RHI\D3D12</Filter>
     </ClInclude>
   </ItemGroup>
