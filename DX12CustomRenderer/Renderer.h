@@ -44,7 +44,7 @@ public:
 	bool CreateDepthBuffer();
 
 	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
-	bool CreateTexture();
+	bool CreateTexture(const wchar_t* FilePath);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
 	void UpdateViewport(UINT Width, UINT Height);
@@ -70,7 +70,7 @@ private:
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
 
-	ID3D12Resource* Texture = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> Texture = nullptr;
 	ID3D12DescriptorHeap* SRVHeap = nullptr;
 
 	D3D12_VIEWPORT Viewport;

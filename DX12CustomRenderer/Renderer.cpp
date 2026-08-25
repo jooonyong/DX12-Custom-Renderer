@@ -134,6 +134,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateTexture(L"Assets/Test.jpg"))
+	{
+		return false;
+	}
 	if (!ResourceUploader.End())
 	{
 		return false;
@@ -142,10 +146,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	if (!CreateTexture())
-	{
-		return false;
-	}
+	
 	return true;
 }
 
@@ -634,111 +635,20 @@ bool Renderer::LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixel
 	return true;
 }
 
-bool Renderer::CreateTexture()
+bool Renderer::CreateTexture(const wchar_t* FilePath)
 {
 	std::vector<uint8_t> OutPixels;
 	UINT TextureWidth = 0;
 	UINT TextureHeight = 0;
-	if (!LoadImage( L"Assets/Test.jpg", OutPixels, TextureWidth, TextureHeight))
+	if (!LoadImage( FilePath, OutPixels, TextureWidth, TextureHeight))
 	{
 		return false;
 	}
 
-	D3D12_RESOURCE_DESC TextureDesc{};
-	TextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	TextureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	TextureDesc.MipLevels = 1;
-	TextureDesc.Alignment = 0;
-	TextureDesc.Width = TextureWidth;
-	TextureDesc.Height = TextureHeight;
-	TextureDesc.DepthOrArraySize = 1;
-	TextureDesc.SampleDesc.Count = 1;
-	TextureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	TextureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-	D3D12_HEAP_PROPERTIES DefaultHeapProperties{};
-	DefaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
-
-	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &TextureDesc,
-		D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&Texture));
-	if (FAILED(Result))
+	if (!ResourceUploader.UploadTexture(OutPixels.data(), TextureWidth, TextureHeight, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, Texture))
 	{
 		return false;
 	}
-
-	D3D12_PLACED_SUBRESOURCE_FOOTPRINT FootPrint{};
-	UINT NumRow;
-	UINT64 RowSize;
-	UINT64 UploadBufferSize;
-	Device.GetDevice()->GetCopyableFootprints(&TextureDesc, 0, 1, 0, &FootPrint, &NumRow, &RowSize, &UploadBufferSize);
-
-	ID3D12Resource* TextureUploadBuffer = nullptr;
-
-	D3D12_RESOURCE_DESC UploadDesc{};
-	UploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	UploadDesc.Width = UploadBufferSize;
-	UploadDesc.Height = 1;
-	UploadDesc.MipLevels = 1;
-	UploadDesc.DepthOrArraySize = 1;
-	UploadDesc.SampleDesc.Count = 1;
-	UploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-	D3D12_HEAP_PROPERTIES UploadHeapProperties{};
-	UploadHeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
-	Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &UploadDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&TextureUploadBuffer));
-	if (FAILED(Result))
-	{
-		return false;
-	}
-
-	uint8_t* MappedData = nullptr;
-	TextureUploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData));
-	for (int i = 0; i < NumRow; i++)
-	{
-		const uint8_t* Src = OutPixels.data() + i * RowSize;
-		uint8_t* Dest = MappedData + FootPrint.Offset + i * FootPrint.Footprint.RowPitch;
-
-		memcpy(Dest, Src, RowSize);
-	}
-
-	D3D12_TEXTURE_COPY_LOCATION Dst{};
-	Dst.pResource = Texture;
-	Dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-	Dst.SubresourceIndex = 0;
-
-	D3D12_TEXTURE_COPY_LOCATION Src{};
-	Src.pResource = TextureUploadBuffer;
-	Src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-	Src.PlacedFootprint = FootPrint;
-
-	TextureUploadBuffer->Unmap(0, nullptr);
-
-	CommandContext.Reset(Frame[0].CommandAllocator);
-	CommandContext.GetCommandList()->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
-	
-	D3D12_RESOURCE_BARRIER Barrier{};
-	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	Barrier.Transition.pResource = Texture;
-	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandContext.GetCommandList()->ResourceBarrier(1, &Barrier);
-
-	CommandContext.Close();
-
-	CommandQueue.Execute(&CommandContext);
-
-	UINT64 FenceValue = CommandQueue.Signal();
-	if (FenceValue == 0)
-	{
-		return false;
-	}
-	CommandQueue.WaitForFence(FenceValue);
-
-	TextureUploadBuffer->Release();
-	TextureUploadBuffer = nullptr;
 
 	D3D12_DESCRIPTOR_HEAP_DESC SRVHeapDesc{};
 	SRVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -746,7 +656,7 @@ bool Renderer::CreateTexture()
 	SRVHeapDesc.NumDescriptors = 1;
 	SRVHeapDesc.NodeMask = 0;
 
-	Result = Device.GetDevice()->CreateDescriptorHeap(&SRVHeapDesc, IID_PPV_ARGS(&SRVHeap));
+	HRESULT Result = Device.GetDevice()->CreateDescriptorHeap(&SRVHeapDesc, IID_PPV_ARGS(&SRVHeap));
 	if (FAILED(Result))
 	{
 		return false;
@@ -758,7 +668,7 @@ bool Renderer::CreateTexture()
 	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	SRVDesc.Texture2D.MipLevels = 1;
 
-	Device.GetDevice()->CreateShaderResourceView(Texture, &SRVDesc, SRVHeap->GetCPUDescriptorHandleForHeapStart());
+	Device.GetDevice()->CreateShaderResourceView(Texture.Get(), &SRVDesc, SRVHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
 }
@@ -773,14 +683,6 @@ std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
 	
 	ResourceUploader.UploadBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer);
 	ResourceUploader.UploadBuffer(Data.Indices.data(), IndexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, LocalIndexBuffer);
-	/*if (!CreateDefaultBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer))
-	{
-		return nullptr;
-	}
-	if (!CreateDefaultBuffer(Data.Indices.data(), IndexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, LocalIndexBuffer))
-	{
-		return nullptr;
-	}*/
 
 	return std::make_unique<Mesh>(std::move(LocalVertexBuffer), VertexBufferSize, sizeof(Vertex),
 		std::move(LocalIndexBuffer), IndexBufferSize, static_cast<UINT>(Data.Indices.size()));

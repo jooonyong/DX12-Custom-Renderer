@@ -14,6 +14,8 @@ public:
     bool Initialize(D3D12Device* InDevice, D3D12CommandQueue* InCommandQueue, D3D12CommandContext* InCommandContext,ID3D12CommandAllocator* InCommandAllocator);
     bool Begin();
     bool UploadBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, Microsoft::WRL::ComPtr<ID3D12Resource>& OutResource);
+    bool UploadTexture(const uint8_t* Data, UINT Width, UINT Height, D3D12_RESOURCE_STATES FinalState, Microsoft::WRL::ComPtr<ID3D12Resource>& OutResource);
+
     bool End();
 
 private:
