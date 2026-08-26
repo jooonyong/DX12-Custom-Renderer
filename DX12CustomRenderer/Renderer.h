@@ -25,8 +25,11 @@ struct FrameResource
 {
 	ID3D12CommandAllocator* CommandAllocator = nullptr;
 	UINT FenceValue = 0;
-	ID3D12Resource* ConstantBuffer = nullptr;
-	void* ConstantBufferMappedData = nullptr;
+	ID3D12Resource* TransformConstantBuffer = nullptr;
+	void* TransformConstantBufferMappedData = nullptr;
+
+	ID3D12Resource* DirLgtConstantBuffer = nullptr;
+	void* DirLgtConstantBufferMappedData = nullptr;
 };
 
 struct TransformConstant
@@ -34,6 +37,15 @@ struct TransformConstant
 	DirectX::XMFLOAT4X4 WorldMatrix;
 	DirectX::XMFLOAT4X4 ViewMatrix;
 	DirectX::XMFLOAT4X4 ProjectionMatrix;
+	DirectX::XMFLOAT4X4 WorldInverseTranspose;
+};
+
+struct DirectionalLightConstant
+{
+	DirectX::XMFLOAT3 Direction = { 0.0f, -1.0f, 1.0f };
+	float Intensity = 1.0f;
+	DirectX::XMFLOAT3 Color{ 1.0f,1.0f,1.0f };
+	float AmbientIntensity = 0.1f;
 };
 
 class Renderer
@@ -52,7 +64,6 @@ public:
 
 	bool CreatePipelineState();
 
-	bool CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer);
 	bool CreateDepthBuffer();
 
 	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);

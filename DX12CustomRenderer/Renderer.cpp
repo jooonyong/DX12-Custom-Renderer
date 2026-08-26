@@ -28,10 +28,17 @@ Renderer::~Renderer()
 			Frame[i].CommandAllocator->Release();
 			Frame[i].CommandAllocator = nullptr;
 		}
-		if (Frame[i].ConstantBuffer)
+		if (Frame[i].TransformConstantBuffer)
 		{
-			Frame[i].ConstantBuffer->Release();
-			Frame[i].ConstantBufferMappedData = nullptr;
+			Frame[i].TransformConstantBuffer->Unmap(0, nullptr);
+			Frame[i].TransformConstantBuffer->Release();
+			Frame[i].TransformConstantBufferMappedData = nullptr;
+		}
+		if (Frame[i].DirLgtConstantBuffer)
+		{
+			Frame[i].DirLgtConstantBuffer->Unmap(0, nullptr);
+			Frame[i].DirLgtConstantBuffer->Release();
+			Frame[i].DirLgtConstantBufferMappedData = nullptr;
 		}
 	}
 	if (DepthBuffer)
@@ -63,27 +70,53 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 			return false;
 		}
 		
-		//ConstantBuffer용 UploadHeap
-		D3D12_RESOURCE_DESC BufferDesc{};
-		BufferDesc.Width = sizeof(TransformConstant);
-		BufferDesc.Height = 1;
-		BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		BufferDesc.DepthOrArraySize = 1;
-		BufferDesc.MipLevels = 1;
-		BufferDesc.SampleDesc.Count = 1;
-		BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		//TRansform ConstantBuffer용 UploadHeap
+		UINT64 BufferSize = (sizeof(TransformConstant) + 255) & ~255;
+
+		D3D12_RESOURCE_DESC TransformBufferDesc{};
+		TransformBufferDesc.Width = BufferSize;
+		TransformBufferDesc.Height = 1;
+		TransformBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		TransformBufferDesc.DepthOrArraySize = 1;
+		TransformBufferDesc.MipLevels = 1;
+		TransformBufferDesc.SampleDesc.Count = 1;
+		TransformBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
 		D3D12_HEAP_PROPERTIES UploadHeapProperties{};
 		UploadHeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
 
 		HRESULT Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
-			&BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&Frame[i].ConstantBuffer));
+			&TransformBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&Frame[i].TransformConstantBuffer));
 		if (FAILED(Result))
 		{
-			Frame[i].ConstantBuffer->Release();
+			Frame[i].TransformConstantBuffer->Release();
 			return false;
 		}
-		if (FAILED(Frame[i].ConstantBuffer->Map(0, nullptr, &Frame[i].ConstantBufferMappedData)))
+		if (FAILED(Frame[i].TransformConstantBuffer->Map(0, nullptr, &Frame[i].TransformConstantBufferMappedData)))
+		{
+			return false;
+		
+		}
+		BufferSize = (sizeof(DirectionalLightConstant) + 255) & ~255;
+
+		//DirectionalLight ConstantBuffer용 UploadHeap
+		D3D12_RESOURCE_DESC DirLgtBufferDesc{};
+		DirLgtBufferDesc.Width = BufferSize;
+		DirLgtBufferDesc.Height = 1;
+		DirLgtBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		DirLgtBufferDesc.DepthOrArraySize = 1;
+		DirLgtBufferDesc.MipLevels = 1;
+		DirLgtBufferDesc.SampleDesc.Count = 1;
+		DirLgtBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+		Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
+			&DirLgtBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&Frame[i].DirLgtConstantBuffer));
+		if (FAILED(Result))
+		{
+			Frame[i].DirLgtConstantBuffer->Release();
+			return false;
+		}
+		if (FAILED(Frame[i].DirLgtConstantBuffer->Map(0, nullptr, &Frame[i].DirLgtConstantBufferMappedData)))
 		{
 			return false;
 		}
@@ -195,13 +228,18 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
+	DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr,World);
 
 	TransformConstant ConstantData;
 	DirectX::XMStoreFloat4x4(&ConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));
 	DirectX::XMStoreFloat4x4(&ConstantData.ViewMatrix, DirectX::XMMatrixTranspose(View));
 	DirectX::XMStoreFloat4x4(&ConstantData.ProjectionMatrix, DirectX::XMMatrixTranspose(Projection));
+	DirectX::XMStoreFloat4x4(&ConstantData.WorldInverseTranspose, DirectX::XMMatrixTranspose(WorldInverseTranspose));
 
-	memcpy(CurrentFrame.ConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
+	memcpy(CurrentFrame.TransformConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
+
+	DirectionalLightConstant DirLgtData{};
+	memcpy(CurrentFrame.DirLgtConstantBufferMappedData, &DirLgtData, sizeof(DirectionalLightConstant));
 
 	CubeMaterial->UpdateGPU(CurrentIndex);
 	//삼각형 그리기
@@ -211,10 +249,11 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap()};
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
-	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.ConstantBuffer->GetGPUVirtualAddress()); //b0
+	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
 	CommandList->SetGraphicsRootDescriptorTable(1, CubeMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
 	CommandList->SetGraphicsRootConstantBufferView(2, CubeMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
-	
+	CommandList->SetGraphicsRootConstantBufferView(3, CurrentFrame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
+
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
@@ -258,21 +297,30 @@ bool Renderer::CreateRootSignature()
 	SRVRange.BaseShaderRegister = 0; //t0
 	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[3]{};
+	D3D12_ROOT_PARAMETER RootParameters[4]{};
+	//Transform ConstantBuffer
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
 	RootParameters[0].Descriptor.RegisterSpace = 0;
 	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
+	//Texture DescriptorTable
 	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1; 
 	RootParameters[1].DescriptorTable.pDescriptorRanges = &SRVRange;
 	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
+	//Material ConstantBuffer
 	RootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[2].Descriptor.ShaderRegister = 1; // b1
 	RootParameters[2].Descriptor.RegisterSpace = 0;
 	RootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	//DirectionalLight ConstantBuffer;
+	RootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[3].Descriptor.ShaderRegister = 2; // b2
+	RootParameters[3].Descriptor.RegisterSpace = 0;
+	RootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -291,7 +339,7 @@ bool Renderer::CreateRootSignature()
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc;
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 3;
+	RootDesc.NumParameters = 4;
 	RootDesc.NumStaticSamplers = 1;
 	RootDesc.pParameters = RootParameters;
 	RootDesc.pStaticSamplers = &SamplerDesc;
@@ -438,6 +486,15 @@ bool Renderer::CreatePipelineState()
 			28,
 			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 			0
+		},
+		{
+			"NORMAL",
+			0,
+			DXGI_FORMAT_R32G32B32_FLOAT,
+			0,
+			36,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
 		}
 	};
 
@@ -445,7 +502,7 @@ bool Renderer::CreatePipelineState()
 	PipelineStateDesc.pRootSignature = RootSignature;
 	PipelineStateDesc.VS = VS;
 	PipelineStateDesc.PS = PS;
-	PipelineStateDesc.InputLayout.NumElements= 3;
+	PipelineStateDesc.InputLayout.NumElements= 4;
 	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
 	PipelineStateDesc.NodeMask = 0;
 	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
@@ -471,81 +528,6 @@ bool Renderer::CreatePipelineState()
 	{
 		return false;
 	}
-	return true;
-}
-
-bool Renderer::CreateDefaultBuffer(const void* Data, UINT64 Size, D3D12_RESOURCE_STATES FinalState, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer)
-{
-	//ex) Vertices
-	ID3D12Resource* UploadBuffer = nullptr;
-
-	D3D12_RESOURCE_DESC BufferDesc{};
-	BufferDesc.Width = Size;
-	BufferDesc.Height = 1;
-	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	BufferDesc.DepthOrArraySize = 1;
-	BufferDesc.MipLevels = 1;
-	BufferDesc.SampleDesc.Count = 1;
-	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-	D3D12_HEAP_PROPERTIES UploadHeapProperties{};
-	UploadHeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
-
-	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
-		&BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&UploadBuffer));
-	if (FAILED(Result))
-	{
-		UploadBuffer->Release();
-		return false;
-	}
-	void* MappedData = nullptr;
-	if (FAILED(UploadBuffer->Map(0, nullptr, &MappedData)))
-	{
-		return false;
-	}
-	//배열 데이터를 해당 주소에 복사
-	memcpy(MappedData, Data, Size);
-
-	UploadBuffer->Unmap(0, nullptr);
-	
-	D3D12_HEAP_PROPERTIES DefaultHeapProperties{};
-	DefaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
-
-	Result = Device.GetDevice()->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE,
-		&BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(OutBuffer.ReleaseAndGetAddressOf()));
-	if (FAILED(Result))
-	{
-		return false;
-	}
-
-	CommandContext.Reset(Frame[0].CommandAllocator);
-	CommandContext.GetCommandList()->CopyBufferRegion(OutBuffer.Get(), 0, UploadBuffer, 0, Size);
-
-	D3D12_RESOURCE_BARRIER ResourceBarrier{};
-	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	ResourceBarrier.Transition.pResource = OutBuffer.Get();
-	ResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-	ResourceBarrier.Transition.StateAfter = FinalState;
-	ResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandContext.GetCommandList()->ResourceBarrier(1, &ResourceBarrier);
-	CommandContext.Close();
-
-	CommandQueue.Execute(&CommandContext);
-
-	UINT64 FenceValue = CommandQueue.Signal();
-	if (FenceValue == 0)
-	{
-		return false;
-	}
-	CommandQueue.WaitForFence(FenceValue);
-
-	if (UploadBuffer)
-	{
-		UploadBuffer->Release();
-		UploadBuffer = nullptr;
-	}
-
 	return true;
 }
 
