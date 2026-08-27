@@ -38,6 +38,9 @@ struct TransformConstant
 	DirectX::XMFLOAT4X4 ViewMatrix;
 	DirectX::XMFLOAT4X4 ProjectionMatrix;
 	DirectX::XMFLOAT4X4 WorldInverseTranspose;
+
+	DirectX::XMFLOAT3 CameraPosition;
+	float Padding;
 };
 
 struct DirectionalLightConstant

@@ -95,10 +95,9 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		if (FAILED(Frame[i].TransformConstantBuffer->Map(0, nullptr, &Frame[i].TransformConstantBufferMappedData)))
 		{
 			return false;
-		
 		}
-		BufferSize = (sizeof(DirectionalLightConstant) + 255) & ~255;
 
+		BufferSize = (sizeof(DirectionalLightConstant) + 255) & ~255;
 		//DirectionalLight ConstantBuffer¿ë UploadHeap
 		D3D12_RESOURCE_DESC DirLgtBufferDesc{};
 		DirLgtBufferDesc.Width = BufferSize;
@@ -236,6 +235,8 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	DirectX::XMStoreFloat4x4(&ConstantData.ProjectionMatrix, DirectX::XMMatrixTranspose(Projection));
 	DirectX::XMStoreFloat4x4(&ConstantData.WorldInverseTranspose, DirectX::XMMatrixTranspose(WorldInverseTranspose));
 
+	ConstantData.CameraPosition = MainCamera.GetPosition();
+
 	memcpy(CurrentFrame.TransformConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
 
 	DirectionalLightConstant DirLgtData{};
@@ -302,7 +303,7 @@ bool Renderer::CreateRootSignature()
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
 	RootParameters[0].Descriptor.RegisterSpace = 0;
-	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	//Texture DescriptorTable
 	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;

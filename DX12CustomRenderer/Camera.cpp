@@ -2,6 +2,11 @@
 #include <iostream>
 #include <algorithm>
 
+const DirectX::XMFLOAT3 Camera::GetPosition() const
+{
+	return Position;
+}
+
 DirectX::XMMATRIX Camera::GetViewMatrix() const
 {
 	DirectX::XMVECTOR CameraPosition = DirectX::XMVectorSet(Position.x, Position.y, Position.z, 1.0f);
