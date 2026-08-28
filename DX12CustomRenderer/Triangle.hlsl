@@ -94,6 +94,6 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float3 Specular = LightColor * LightIntensity * SpecularFactor;
 
     float3 FinalColor = Diffuse + Ambient + Specular;
-
+    //return float4(Input.UV, 0.0f, 1.0f);
     return float4(FinalColor, TextureColor.a * BaseColor.a);
 }

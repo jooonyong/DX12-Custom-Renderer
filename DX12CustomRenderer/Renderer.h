@@ -94,6 +94,7 @@ private:
 	D3D12DescriptorAllocator SRVDescriptorAllocator;
 
 	std::unique_ptr<Mesh> CubeMesh = nullptr;
+	std::unique_ptr<Mesh> SphereMesh = nullptr;
 	std::shared_ptr<Material> CubeMaterial = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;

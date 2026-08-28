@@ -159,7 +159,12 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 
 	CubeMesh = CreateMesh(GeometryGenerator::CreateCube());
+	SphereMesh = CreateMesh(GeometryGenerator::CreateSphere(1, 64, 32));
 	if (!CubeMesh)
+	{
+		return false;
+	}
+	if (!SphereMesh)
 	{
 		return false;
 	}
@@ -223,7 +228,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0.0f, 0, nullptr);
 
 	//ConstantBuffer Data(World,View,Projection) ¼¼ÆÃ
-	Angle += 0.01f;
+	Angle += 0.00f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
@@ -261,14 +266,14 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
 	CommandList->OMSetRenderTargets(1, &RTV, FALSE, &DSV);
 
-	const D3D12_VERTEX_BUFFER_VIEW& VBView = CubeMesh->GetVertexBufferView();
-	const D3D12_INDEX_BUFFER_VIEW& IBView =	CubeMesh->GetIndexBufferView();
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = SphereMesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView =	SphereMesh->GetIndexBufferView();
 
 	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
 	
-	CommandList->DrawIndexedInstanced(CubeMesh->GetIndexCount(), 1, 0, 0, 0);
+	CommandList->DrawIndexedInstanced(SphereMesh->GetIndexCount(), 1, 0, 0, 0);
 	
 	//CommandList->DrawInstanced(3, 1, 0, 0);
 
