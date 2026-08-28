@@ -13,8 +13,8 @@ struct MaterialFrameResource
 
 struct MaterialConstants
 {
-	DirectX::XMFLOAT4 BaseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-	float Roughness = 0.3f;
+	DirectX::XMFLOAT4 BaseColor = { 0.8f, 0.15f, 0.05f, 1.0f };
+	float Roughness = 0.15f;
 	float Metallic = 0.0f;
 
 	//HLSL Constant Buffer의 packing을 맞추기 위해서

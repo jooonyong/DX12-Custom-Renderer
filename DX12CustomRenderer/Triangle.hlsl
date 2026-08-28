@@ -1,6 +1,8 @@
 Texture2D AlbedoTexture : register(t0);
 SamplerState LinearSampler : register(s0);
 
+static const float PI = 3.1415926535;
+
 struct VSInput
 {
     float3 Position : POSITION;
@@ -46,6 +48,44 @@ cbuffer DirLgtBuffer : register(b2)
     float AmbientIntensity;
 }
 
+//Cook-Torrance 반사 모델을 위한 함수
+//Specular BRDF = (D * F * G) / (4 * N·L * N·V)
+//D: Normal Distribution Function
+//F: Fresnel
+//G: Geometry Shade masking
+
+float DistributionGGX(float3 N, float3 H, float Roughness)
+{
+    float a2 = Roughness * Roughness * Roughness * Roughness;
+    float Distribution = (dot(N, H) * a2 - dot(N, H)) * dot(N, H) + 1;
+
+    return a2 / (PI * Distribution * Distribution);
+}
+
+float GeometrySchlickGGX(float NdotX, float Roughness)
+{
+    float R = Roughness + 1.0f;
+    float K = (R * R) / 8.0f;
+
+    return NdotX / (NdotX * (1.0f - K) + K);
+}
+
+float GeometrySmith(float3 N, float3 V, float3 L, float Roughness)
+{
+    float NdotV = saturate(dot(N, V));
+    float NdotL = saturate(dot(N, L));
+
+    float GGXV = GeometrySchlickGGX(NdotV, Roughness);
+    float GGXL = GeometrySchlickGGX(NdotL, Roughness);
+
+    return GGXV * GGXL;
+}
+
+float3 FresnelSchlick(float CosTheta, float3 F0)
+{
+    return F0 + (1.0f - F0) * pow(1.0f - CosTheta, 5.0f);
+}
+
 VSOutput VSMain(VSInput Input)
 {
     VSOutput Output;
@@ -70,30 +110,41 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float3 N = normalize(Input.Normal);  //Normal
     float3 L = normalize(-LightDirection); //Light Direction
     float3 V = normalize(CameraPosition - Input.WorldPosition.xyz); //View Direction
-    //Blinn Phong specular
+    
+    //specular
     float3 H = normalize(L + V); //LightDir vector + ViewDir Vector
 
     //Diffuse
     float NdotL = max(dot(N,L), 0.0f);
     //Specular(Normal과 H가 평행일수록 specular가 강해짐
     float NdotH = max(dot(N, H), 0.0f);
+    float NdotV = max(dot(N, V), 0.0f);
 
     float4 TextureColor = AlbedoTexture.Sample(LinearSampler, Input.UV);
     float3 Albedo = TextureColor.rgb * BaseColor.rgb;
 
-    float3 Diffuse = Albedo * LightColor * LightIntensity * NdotL;
-    float3 Ambient = Albedo * AmbientIntensity;
-    
-    float Shininess = lerp(128.0f, 4.0f, Roughness);
-    float SpecularFactor = 0;
-    if (NdotL > 0.0f)
-    {
-        SpecularFactor = pow(NdotH, Shininess);
-    }
-    
-    float3 Specular = LightColor * LightIntensity * SpecularFactor;
+    float3 F0 =lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
 
-    float3 FinalColor = Diffuse + Ambient + Specular;
-    //return float4(Input.UV, 0.0f, 1.0f);
+    float D = DistributionGGX(N, H, Roughness);
+    float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
+    float G = GeometrySmith(N, V, L, Roughness);
+
+    float3 Numerator = D * G * F;
+    float Denominator = 4.0f * NdotV * NdotL;
+
+    float3 Specular = Numerator / max(Denominator, 0.0001f);
+    //float3 Diffuse = Albedo * LightColor * LightIntensity * NdotL;
+   
+    float3 KD = 1.0f - F;
+    KD *= (1.0f - Metallic);
+
+    float3 DiffuseBRDF = KD * Albedo / PI;
+    
+    float3 Radiance = LightColor * LightIntensity;
+    float3 DirectLighting = (DiffuseBRDF + Specular) * Radiance * NdotL;
+    float3 Ambient = 0;
+    
+    float3 FinalColor = DirectLighting;
+
     return float4(FinalColor, TextureColor.a * BaseColor.a);
 }

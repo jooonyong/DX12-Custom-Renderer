@@ -175,7 +175,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	CubeMaterial = std::make_shared<Material>(AlbedoTexture, DirectX::XMFLOAT4(1.0f,0.6f,0.4f,1.0f), 0.3f, 0.1f);
+	CubeMaterial = std::make_shared<Material>(AlbedoTexture, DirectX::XMFLOAT4(1.0f,1.0f,1.0f,1.0f), 0.03f, 0.1f);
 	if (!CubeMaterial)
 	{
 		return false;
