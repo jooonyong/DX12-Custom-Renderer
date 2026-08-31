@@ -7,6 +7,7 @@
 #include "D3D12DescriptorAllocator.h"
 #include "Mesh.h"
 #include "Texture.h"
+#include "GLTFLoader.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
@@ -93,9 +94,11 @@ private:
 	D3D12ResourceUploader ResourceUploader{};
 	D3D12DescriptorAllocator SRVDescriptorAllocator;
 
-	std::unique_ptr<Mesh> CubeMesh = nullptr;
-	std::unique_ptr<Mesh> SphereMesh = nullptr;
-	std::shared_ptr<Material> CubeMaterial = nullptr;
+	GLTFLoader ModelLoader;
+	ModelData LoadedModel;
+
+	std::unique_ptr<Mesh> ModelMesh = nullptr;
+	std::shared_ptr<Material> ModelMaterial = nullptr;
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;

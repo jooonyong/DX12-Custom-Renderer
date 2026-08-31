@@ -158,13 +158,12 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	CubeMesh = CreateMesh(GeometryGenerator::CreateCube());
-	SphereMesh = CreateMesh(GeometryGenerator::CreateSphere(1, 64, 32));
-	if (!CubeMesh)
+	if (!ModelLoader.Load("Assets/BASEmodel.glb", LoadedModel))
 	{
 		return false;
 	}
-	if (!SphereMesh)
+	ModelMesh = CreateMesh(LoadedModel.Mesh);
+	if (!ModelMesh)
 	{
 		return false;
 	}
@@ -175,12 +174,12 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	CubeMaterial = std::make_shared<Material>(AlbedoTexture, DirectX::XMFLOAT4(1.0f,1.0f,1.0f,1.0f), 0.03f, 0.1f);
-	if (!CubeMaterial)
+	ModelMaterial = std::make_shared<Material>(AlbedoTexture, LoadedModel.Material.BaseColor, LoadedModel.Material.Roughness, LoadedModel.Material.Metallic);
+	if (!ModelMaterial)
 	{
 		return false;
 	}
-	if (!CubeMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
+	if (!ModelMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
 	{
 		return false;
 	}
@@ -247,7 +246,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	DirectionalLightConstant DirLgtData{};
 	memcpy(CurrentFrame.DirLgtConstantBufferMappedData, &DirLgtData, sizeof(DirectionalLightConstant));
 
-	CubeMaterial->UpdateGPU(CurrentIndex);
+	ModelMaterial->UpdateGPU(CurrentIndex);
 	//삼각형 그리기
 	CommandList->SetPipelineState(PipelineState);
 	CommandList->SetGraphicsRootSignature(RootSignature);
@@ -256,8 +255,8 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
 	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
-	CommandList->SetGraphicsRootDescriptorTable(1, CubeMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
-	CommandList->SetGraphicsRootConstantBufferView(2, CubeMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
+	CommandList->SetGraphicsRootDescriptorTable(1, ModelMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
+	CommandList->SetGraphicsRootConstantBufferView(2, ModelMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
 	CommandList->SetGraphicsRootConstantBufferView(3, CurrentFrame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
 
 	CommandList->RSSetViewports(1, &Viewport);
@@ -266,17 +265,15 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
 	CommandList->OMSetRenderTargets(1, &RTV, FALSE, &DSV);
 
-	const D3D12_VERTEX_BUFFER_VIEW& VBView = SphereMesh->GetVertexBufferView();
-	const D3D12_INDEX_BUFFER_VIEW& IBView =	SphereMesh->GetIndexBufferView();
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = ModelMesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView =	ModelMesh->GetIndexBufferView();
 
 	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
 	
-	CommandList->DrawIndexedInstanced(SphereMesh->GetIndexCount(), 1, 0, 0, 0);
+	CommandList->DrawIndexedInstanced(ModelMesh->GetIndexCount(), 1, 0, 0, 0);
 	
-	//CommandList->DrawInstanced(3, 1, 0, 0);
-
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 

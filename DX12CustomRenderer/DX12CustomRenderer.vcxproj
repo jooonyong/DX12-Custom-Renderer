@@ -135,6 +135,7 @@
     <ClCompile Include="D3D12ResourceUploader.cpp" />
     <ClCompile Include="D3D12SwapChain.cpp" />
     <ClCompile Include="GeometryGenerator.cpp" />
+    <ClCompile Include="GLTFLoader.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="Mesh.cpp" />
@@ -152,9 +153,11 @@
     <ClInclude Include="D3D12ResourceUploader.h" />
     <ClInclude Include="D3D12SwapChain.h" />
     <ClInclude Include="GeometryGenerator.h" />
+    <ClInclude Include="GLTFLoader.h" />
     <ClInclude Include="Material.h" />
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="MeshData.h" />
+    <ClInclude Include="ModelData.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Texture.h" />
     <ClInclude Include="WindowsWindow.h" />
