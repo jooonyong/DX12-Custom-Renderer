@@ -5,6 +5,12 @@
 
 #include "D3D12DescriptorAllocator.h"
 
+enum class TextureColorSpace
+{
+	Linear,
+	SRGB
+};
+
 class Texture
 {
 public:

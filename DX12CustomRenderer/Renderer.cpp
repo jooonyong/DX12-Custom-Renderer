@@ -169,7 +169,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	std::shared_ptr<Texture> AlbedoTexture = CreateTexture(L"Assets/Test.jpg");
+	std::shared_ptr<Texture> AlbedoTexture = CreateTexture(L"Assets/Test.jpg", TextureColorSpace::SRGB);
 	if (!AlbedoTexture)
 	{
 		return false;
@@ -640,7 +640,7 @@ bool Renderer::LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixel
 	return true;
 }
 
-std::shared_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath)
+std::shared_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath, TextureColorSpace ColorSpace)
 {
 	std::vector<uint8_t> OutPixels;
 	UINT TextureWidth = 0;
@@ -660,6 +660,10 @@ std::shared_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath)
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
 	SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	if (ColorSpace == TextureColorSpace::SRGB)
+	{
+		SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	}
 	SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	SRVDesc.Texture2D.MipLevels = 1;

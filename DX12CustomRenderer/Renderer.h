@@ -6,6 +6,7 @@
 #include "D3D12ResourceUploader.h"
 #include "D3D12DescriptorAllocator.h"
 #include "Mesh.h"
+#include "Texture.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
@@ -18,7 +19,6 @@
 
 class IDxcBlob;
 class Camera;
-class Texture;
 class Material;
 
 struct FrameResource
@@ -70,7 +70,7 @@ public:
 	bool CreateDepthBuffer();
 
 	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
-	std::shared_ptr<Texture> CreateTexture(const wchar_t* FilePath);
+	std::shared_ptr<Texture> CreateTexture(const wchar_t* FilePath, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
 	void UpdateViewport(UINT Width, UINT Height);
