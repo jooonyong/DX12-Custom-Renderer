@@ -1,6 +1,8 @@
 #pragma once
 
 #include "MeshData.h"
+#include "ImageData.h"
+#include <optional>
 
 struct MaterialData
 {
@@ -8,6 +10,8 @@ struct MaterialData
 
 	float Roughness = 0.3f;
 	float Metallic = 0.0f;
+	
+	std::optional<ImageData> BaseColorImage;
 };
 
 struct ModelData

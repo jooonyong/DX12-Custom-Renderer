@@ -8,15 +8,16 @@
 #include "Mesh.h"
 #include "Texture.h"
 #include "GLTFLoader.h"
+#include "ImageLoader.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
 #include <vector>
 #include <memory>
-#include <wincodec.h>
-#include <wrl.h>
-
-#pragma comment(lib, "windowscodecs.lib")
+//#include <wincodec.h>
+//#include <wrl.h>
+//
+//#pragma comment(lib, "windowscodecs.lib")
 
 class IDxcBlob;
 class Camera;
@@ -70,8 +71,7 @@ public:
 
 	bool CreateDepthBuffer();
 
-	bool LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth,UINT& OutHeight);
-	std::shared_ptr<Texture> CreateTexture(const wchar_t* FilePath, TextureColorSpace ColorSpace);
+	std::shared_ptr<Texture> CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
 	void UpdateViewport(UINT Width, UINT Height);
@@ -96,7 +96,9 @@ private:
 
 	GLTFLoader ModelLoader;
 	ModelData LoadedModel;
+	ImageLoader TextureImageLoader;
 
+	std::shared_ptr<Texture> DefaultWhiteTexture;
 	std::unique_ptr<Mesh> ModelMesh = nullptr;
 	std::shared_ptr<Material> ModelMaterial = nullptr;
 

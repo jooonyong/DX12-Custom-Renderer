@@ -158,7 +158,18 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	if (!ModelLoader.Load("Assets/BASEmodel.glb", LoadedModel))
+	ImageData WhiteImage;
+	WhiteImage.Width = 1;
+	WhiteImage.Height = 1;
+
+	WhiteImage.Pixels ={255, 255, 255, 255};
+	DefaultWhiteTexture = CreateTexture(WhiteImage,TextureColorSpace::SRGB);
+	if (!DefaultWhiteTexture)
+	{
+		return false;
+	}
+
+	if (!ModelLoader.Load("Assets/Mario.gltf", LoadedModel))
 	{
 		return false;
 	}
@@ -167,14 +178,17 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-
-	std::shared_ptr<Texture> AlbedoTexture = CreateTexture(L"Assets/Test.jpg", TextureColorSpace::SRGB);
-	if (!AlbedoTexture)
+	std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
+	if (LoadedModel.Material.BaseColorImage.has_value())
 	{
-		return false;
+		ModelTexture = CreateTexture(LoadedModel.Material.BaseColorImage.value(), TextureColorSpace::SRGB);
+		if (!ModelTexture)
+		{
+			return false;
+		}
 	}
 
-	ModelMaterial = std::make_shared<Material>(AlbedoTexture, LoadedModel.Material.BaseColor, LoadedModel.Material.Roughness, LoadedModel.Material.Metallic);
+	ModelMaterial = std::make_shared<Material>(ModelTexture, LoadedModel.Material.BaseColor, LoadedModel.Material.Roughness, LoadedModel.Material.Metallic);
 	if (!ModelMaterial)
 	{
 		return false;
@@ -586,69 +600,10 @@ bool Renderer::CreateDepthBuffer()
 	return true;
 }
 
-bool Renderer::LoadImage(const wchar_t* FilePath, std::vector<uint8_t>& OutPixels, UINT& OutWidth, UINT& OutHeight)
+std::shared_ptr<Texture> Renderer::CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace)
 {
-	Microsoft::WRL::ComPtr<IWICImagingFactory> Factory;
-	HRESULT Result = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(Factory.GetAddressOf()));
-	if (FAILED(Result))
-	{
-		return false;
-	}
-
-	Microsoft::WRL::ComPtr<IWICBitmapDecoder> Decoder;
-	Result = Factory->CreateDecoderFromFilename(FilePath, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, Decoder.GetAddressOf());
-	if (FAILED(Result))
-	{
-		return false;
-	}
-
-	Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> Frame;
-	Result = Decoder->GetFrame(0, Frame.GetAddressOf());
-	if (FAILED(Result))
-	{
-		return false;
-	}
-
-	Frame->GetSize(&OutWidth, &OutHeight);
-
-	Microsoft::WRL::ComPtr<IWICFormatConverter> Converter;
-	Result = Factory->CreateFormatConverter(Converter.GetAddressOf());
-	if (FAILED(Result))
-	{
-		return false;
-	}
-	Result = Converter->Initialize(Frame.Get(), GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone,
-		nullptr, 0.0, WICBitmapPaletteTypeCustom);
-	if (FAILED(Result))
-	{
-		return false;
-	}
-
-	const UINT BytesPerPixel = 4;
-	const UINT RowPitch = OutWidth * BytesPerPixel;
-	const UINT ImageSize = RowPitch * OutHeight;
-	OutPixels.resize(ImageSize);
-
-	Result = Converter->CopyPixels(nullptr,	RowPitch, ImageSize, OutPixels.data());
-	if (FAILED(Result))
-	{
-		return false;
-	}
-	return true;
-}
-
-std::shared_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath, TextureColorSpace ColorSpace)
-{
-	std::vector<uint8_t> OutPixels;
-	UINT TextureWidth = 0;
-	UINT TextureHeight = 0;
-	if (!LoadImage( FilePath, OutPixels, TextureWidth, TextureHeight))
-	{
-		return nullptr;
-	}
-
 	Microsoft::WRL::ComPtr<ID3D12Resource> TextureResource;
-	if (!ResourceUploader.UploadTexture(OutPixels.data(), TextureWidth, TextureHeight, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, TextureResource))
+	if (!ResourceUploader.UploadTexture(Image.Pixels.data(), Image.Width, Image.Height, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, TextureResource))
 	{
 		return nullptr;
 	}
@@ -667,7 +622,7 @@ std::shared_ptr<Texture> Renderer::CreateTexture(const wchar_t* FilePath, Textur
 
 	Device.GetDevice()->CreateShaderResourceView(TextureResource.Get(), &SRVDesc, TextureSRV.CPU);
 
-	return std::make_shared<Texture>(std::move(TextureResource), TextureSRV, TextureWidth, TextureHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
+	return std::make_shared<Texture>(std::move(TextureResource), TextureSRV, Image.Width, Image.Height, DXGI_FORMAT_R8G8B8A8_UNORM);
 }
 
 std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)

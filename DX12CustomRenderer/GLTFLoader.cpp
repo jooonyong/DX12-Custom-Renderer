@@ -2,7 +2,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "GLTFLoader.h"
+#include "ImageLoader.h"
 #include "cgltf.h"
+#include <filesystem>
 
 bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 {
@@ -37,7 +39,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 						break;
 
 					case cgltf_attribute_type_texcoord:
-						if (Primitive->attributes->index == 0)
+						if (Attribute.index == 0)
 						{
 							UVAccessor = Attribute.data;
 						}
@@ -56,7 +58,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 				{
 					float Position[3]{};
 					float Normal[3]{};
-					float UV[3]{};
+					float UV[2]{};
 
 					if (!cgltf_accessor_read_float(PositionAccessor, i, Position, 3))
 					{
@@ -111,6 +113,8 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 					if (GLTFMaterial->has_pbr_metallic_roughness)
 					{
 						const auto& PBR = GLTFMaterial->pbr_metallic_roughness;
+						const cgltf_texture* Texture = PBR.base_color_texture.texture;
+
 						OutModel.Material.BaseColor =
 						{
 							PBR.base_color_factor[0],
@@ -120,7 +124,45 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 						};
 						OutModel.Material.Roughness = PBR.roughness_factor;
 						OutModel.Material.Metallic = PBR.metallic_factor;
+
+						if (Texture && Texture->image)
+						{
+							const cgltf_image* Image = Texture->image;
+							//external texture
+							if (Image->uri)
+							{
+								std::filesystem::path ModelPath(FilePath);
+								std::filesystem::path ImagePath = ModelPath.parent_path() / Image->uri;
+
+								ImageData ImageData;
+								if (!ImageLoader::LoadFromFile(ImagePath.wstring(), ImageData))
+								{
+									cgltf_free(Data);
+									return false;
+								}
+								OutModel.Material.BaseColorImage = std::move(ImageData);
+							}
+							//embedded texture
+							else if(Image->buffer_view)
+							{
+								const uint8_t* CompressedData = cgltf_buffer_view_data(Image->buffer_view);
+								size_t CompressedSize = Image->buffer_view->size;
+								
+								ImageData DecodedImage;
+								if (!ImageLoader::LoadFromMemory(CompressedData, CompressedSize, DecodedImage))
+								{
+									cgltf_free(Data);
+									return false;
+								}
+								OutModel.Material.BaseColorImage = std::move(DecodedImage);
+							}
+						}
 					}
+				}
+				//material이 없을때
+				else 
+				{
+
 				}
 			}
 		}
