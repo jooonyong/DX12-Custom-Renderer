@@ -1,7 +1,7 @@
 #include "Material.h"
 
-Material::Material(std::shared_ptr<Texture> AlbedoTexture, const DirectX::XMFLOAT4& BaseColor, float Roughness, float Metallic)
-	:AlbedoTexture(std::move(AlbedoTexture))
+Material::Material(std::shared_ptr<Texture> AlbedoTexture, std::shared_ptr<Texture> MRTexture, const DirectX::XMFLOAT4& BaseColor, float Roughness, float Metallic)
+	:AlbedoTexture(std::move(AlbedoTexture)), MetallicRoughnessTexture(std::move(MRTexture))
 {
 	Constants.BaseColor = BaseColor;
 	Constants.Roughness = Roughness;
@@ -77,6 +77,11 @@ void Material::UpdateGPU(UINT FrameIndex)
 const std::shared_ptr<Texture>& Material::GetAlbedoTexture() const
 {
 	return AlbedoTexture;
+}
+
+const std::shared_ptr<Texture>& Material::GetMetallicRoughnessTexture() const
+{
+	return MetallicRoughnessTexture;
 }
 
 const DirectX::XMFLOAT4 Material::GetBaseColor() const

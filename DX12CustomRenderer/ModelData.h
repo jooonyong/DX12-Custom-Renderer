@@ -24,6 +24,7 @@ struct MaterialData
 	float Metallic = 0.0f;
 	
 	std::optional<ImageData> BaseColorImage;
+	std::optional<ImageData> MetallicRoughnessImage;
 };
 
 struct ModelData

@@ -3,7 +3,7 @@
 
 #include "GLTFLoader.h"
 #include "ImageLoader.h"
-#include "cgltf.h"
+
 #include <filesystem>
 
 bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
@@ -93,7 +93,6 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 
 				OutModel.Mesh.Indices.clear();
 				OutModel.SubMeshes.clear();
-
 				OutModel.SubMeshes.reserve(GLTFMesh.primitives_count);
 
 				for (cgltf_size PrimitiveIndex = 0; PrimitiveIndex < GLTFMesh.primitives_count; PrimitiveIndex++)
@@ -122,6 +121,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 
 					const uint32_t IndexEnd = static_cast<uint32_t>(OutModel.Mesh.Indices.size());
 					SubMesh.IndexCount = IndexEnd - SubMesh.IndexStart;
+					
 					if (Primitive.material)
 					{
 						ptrdiff_t MaterialIndex = Primitive.material - Data->materials;
@@ -143,6 +143,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 				{
 					const auto& PBR = GLTFMaterial->pbr_metallic_roughness;
 					const cgltf_texture* Texture = PBR.base_color_texture.texture;
+					const cgltf_texture* MRTexture = PBR.metallic_roughness_texture.texture;
 
 					OutModel.Materials[i].BaseColor =
 					{
@@ -157,39 +158,56 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 					if (Texture && Texture->image)
 					{
 						const cgltf_image* Image = Texture->image;
-						//external texture
-						if (Image->uri)
+						ImageData ImageData{};
+						if (!LoadImage(FilePath, Image, ImageData))
 						{
-							std::filesystem::path ModelPath(FilePath);
-							std::filesystem::path ImagePath = ModelPath.parent_path() / Image->uri;
-
-							ImageData ImageData;
-							if (!ImageLoader::LoadFromFile(ImagePath.wstring(), ImageData))
-							{
-								cgltf_free(Data);
-								return false;
-							}
-							OutModel.Materials[i].BaseColorImage = std::move(ImageData);
+							cgltf_free(Data);
+							return false;
 						}
-						//embedded texture
-						else if (Image->buffer_view)
+						OutModel.Materials[i].BaseColorImage = std::move(ImageData);
+					}
+					if (MRTexture && MRTexture->image)
+					{
+						const cgltf_image* Image = MRTexture->image;
+						ImageData ImageData{};
+						if (!LoadImage(FilePath, Image, ImageData))
 						{
-							const uint8_t* CompressedData = cgltf_buffer_view_data(Image->buffer_view);
-							size_t CompressedSize = Image->buffer_view->size;
-
-							ImageData DecodedImage;
-							if (!ImageLoader::LoadFromMemory(CompressedData, CompressedSize, DecodedImage))
-							{
-								cgltf_free(Data);
-								return false;
-							}
-							OutModel.Materials[i].BaseColorImage = std::move(DecodedImage);
+							cgltf_free(Data);
+							return false;
 						}
+						OutModel.Materials[i].MetallicRoughnessImage = std::move(ImageData);
 					}
 				}
 			}
 		}
 	}
 	cgltf_free(Data);
+	return true;
+}
+
+bool GLTFLoader::LoadImage(const std::string& FilePath, const cgltf_image* Image, ImageData& Data)
+{
+	//external texture
+	if (Image->uri)
+	{
+		std::filesystem::path ModelPath(FilePath);
+		std::filesystem::path ImagePath = ModelPath.parent_path() / Image->uri;
+
+		if (!ImageLoader::LoadFromFile(ImagePath.wstring(), Data))
+		{
+			return false;
+		}
+	}
+	//embedded texture
+	else if (Image->buffer_view)
+	{
+		const uint8_t* CompressedData = cgltf_buffer_view_data(Image->buffer_view);
+		size_t CompressedSize = Image->buffer_view->size;
+
+		if (!ImageLoader::LoadFromMemory(CompressedData, CompressedSize, Data))
+		{
+			return false;
+		}
+	}
 	return true;
 }

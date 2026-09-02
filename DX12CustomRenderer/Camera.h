@@ -2,7 +2,7 @@
 
 #include "DirectXMath.h"
 
-static float Angle = 0.0f;
+static float Angle = 180.0f;
 
 class Camera
 {

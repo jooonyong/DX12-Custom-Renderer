@@ -24,13 +24,14 @@ struct MaterialConstants
 class Material
 {
 public:
-	Material(std::shared_ptr<Texture> AlbedoTexture, const DirectX::XMFLOAT4& BaseColor, float Roughness, float Metallic);
+	Material(std::shared_ptr<Texture> AlbedoTexture, std::shared_ptr<Texture> MRTexture, const DirectX::XMFLOAT4& BaseColor, float Roughness, float Metallic);
 	~Material();
 
 	bool InitializeGPU(ID3D12Device* Device, UINT FrameCount);
 	void UpdateGPU(UINT FrameIndex);
 
 	const std::shared_ptr<Texture>& GetAlbedoTexture() const;
+	const std::shared_ptr<Texture>& GetMetallicRoughnessTexture() const;
 	const DirectX::XMFLOAT4 GetBaseColor() const;
 
 	float GetRoughness() const;
@@ -45,7 +46,8 @@ public:
 private:
 	//여러 Material이 같은 Texture를 사용할 수 있기 떄문에 unique_ptr말고 shared_ptr사용
 	std::shared_ptr<Texture> AlbedoTexture = nullptr;
-	
+	std::shared_ptr<Texture> MetallicRoughnessTexture = nullptr;
+
 	MaterialConstants Constants;
 	std::vector<MaterialFrameResource> FrameResources;
 

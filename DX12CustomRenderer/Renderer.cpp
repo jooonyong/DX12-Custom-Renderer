@@ -180,7 +180,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 
 	DirectX::XMFLOAT4 BaseColor = { 1.0f,1.0f,1.0f,1.0f };
-	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, BaseColor, 0.3f, 0.0f);
+	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, DefaultWhiteTexture, BaseColor, 0.3f, 0.0f);
 	if(DefaultMaterial)
 	{
 		DefaultMaterial->InitializeGPU(Device.GetDevice(), BufferCount);
@@ -190,6 +190,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	for (const MaterialData& MaterialData : LoadedModel.Materials)
 	{
 		std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
+		std::shared_ptr<Texture> MRTexture = DefaultWhiteTexture;
 		if (MaterialData.BaseColorImage.has_value())
 		{
 			ModelTexture = CreateTexture(MaterialData.BaseColorImage.value(), TextureColorSpace::SRGB);
@@ -198,7 +199,16 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 				return false;
 			}
 		}
-		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
+		if (MaterialData.MetallicRoughnessImage.has_value())
+		{
+			MRTexture = CreateTexture(MaterialData.MetallicRoughnessImage.value(), TextureColorSpace::Linear);
+			if (!MRTexture)
+			{
+				return false;
+			}
+		}
+
+		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MRTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
 		if (!ModelMaterial)
 		{
 			return false;
@@ -254,7 +264,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0.0f, 0, nullptr);
 
 	//ConstantBuffer Data(World,View,Projection) ¼¼ÆÃ
-	Angle += 0.00f;
+	//Angle += 0.00f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
@@ -286,9 +296,6 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
 	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
-	
-	//CommandList->SetGraphicsRootDescriptorTable(1, ModelMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
-	//CommandList->SetGraphicsRootConstantBufferView(2, ModelMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
 	CommandList->SetGraphicsRootConstantBufferView(3, CurrentFrame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
 
 	CommandList->RSSetViewports(1, &Viewport);
@@ -307,17 +314,16 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
 	{
 		std::shared_ptr<Material> Material = DefaultMaterial;
-
 		if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < ModelMaterials.size())
 		{
 			Material = ModelMaterials[SubMesh.MaterialIndex];
 		}
 		CommandList->SetGraphicsRootDescriptorTable(1, Material->GetAlbedoTexture()->GetSRV().GPU); //t0
+		CommandList->SetGraphicsRootDescriptorTable(4, Material->GetMetallicRoughnessTexture()->GetSRV().GPU); //t1
 		CommandList->SetGraphicsRootConstantBufferView(2, Material->GetConstantBufferGPUAddress(CurrentIndex)); //b1
 
 		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
 	}
-
 
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -345,14 +351,21 @@ bool Renderer::CreateRootSignature()
 	SRVRange.BaseShaderRegister = 0; //t0
 	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[4]{};
+	D3D12_DESCRIPTOR_RANGE MRRange{};
+	MRRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	MRRange.RegisterSpace = 0;
+	MRRange.NumDescriptors = 1;
+	MRRange.BaseShaderRegister = 1; //t1
+	MRRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[5]{};
 	//Transform ConstantBuffer
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
 	RootParameters[0].Descriptor.RegisterSpace = 0;
 	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	//Texture DescriptorTable
+	//AlbedoTexture DescriptorTable
 	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1; 
 	RootParameters[1].DescriptorTable.pDescriptorRanges = &SRVRange;
@@ -369,6 +382,12 @@ bool Renderer::CreateRootSignature()
 	RootParameters[3].Descriptor.ShaderRegister = 2; // b2
 	RootParameters[3].Descriptor.RegisterSpace = 0;
 	RootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	//MRTexture DescriptorTable
+	RootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[4].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[4].DescriptorTable.pDescriptorRanges = &MRRange;
+	RootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -387,7 +406,7 @@ bool Renderer::CreateRootSignature()
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc;
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 4;
+	RootDesc.NumParameters = 5;
 	RootDesc.NumStaticSamplers = 1;
 	RootDesc.pParameters = RootParameters;
 	RootDesc.pStaticSamplers = &SamplerDesc;

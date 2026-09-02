@@ -1,4 +1,5 @@
 Texture2D AlbedoTexture : register(t0);
+Texture2D MetallicRoughnessTexture : register(t1);
 SamplerState LinearSampler : register(s0);
 
 static const float PI = 3.1415926535;
