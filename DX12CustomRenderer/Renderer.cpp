@@ -178,24 +178,37 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
-	if (LoadedModel.Material.BaseColorImage.has_value())
+
+	DirectX::XMFLOAT4 BaseColor = { 1.0f,1.0f,1.0f,1.0f };
+	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, BaseColor, 0.3f, 0.0f);
+	if(DefaultMaterial)
 	{
-		ModelTexture = CreateTexture(LoadedModel.Material.BaseColorImage.value(), TextureColorSpace::SRGB);
-		if (!ModelTexture)
+		DefaultMaterial->InitializeGPU(Device.GetDevice(), BufferCount);
+	}
+
+	ModelMaterials.reserve(LoadedModel.Materials.size());
+	for (const MaterialData& MaterialData : LoadedModel.Materials)
+	{
+		std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
+		if (MaterialData.BaseColorImage.has_value())
+		{
+			ModelTexture = CreateTexture(MaterialData.BaseColorImage.value(), TextureColorSpace::SRGB);
+			if (!ModelTexture)
+			{
+				return false;
+			}
+		}
+		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
+		if (!ModelMaterial)
 		{
 			return false;
 		}
-	}
+		if (!ModelMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
+		{
+			return false;
+		}
 
-	ModelMaterial = std::make_shared<Material>(ModelTexture, LoadedModel.Material.BaseColor, LoadedModel.Material.Roughness, LoadedModel.Material.Metallic);
-	if (!ModelMaterial)
-	{
-		return false;
-	}
-	if (!ModelMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
-	{
-		return false;
+		ModelMaterials.push_back(ModelMaterial);
 	}
 
 	if (!ResourceUploader.End())
@@ -242,7 +255,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 
 	//ConstantBuffer Data(World,View,Projection) 세팅
 	Angle += 0.00f;
-	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle);
+	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
 	DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr,World);
@@ -260,7 +273,11 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	DirectionalLightConstant DirLgtData{};
 	memcpy(CurrentFrame.DirLgtConstantBufferMappedData, &DirLgtData, sizeof(DirectionalLightConstant));
 
-	ModelMaterial->UpdateGPU(CurrentIndex);
+	for (auto Material : ModelMaterials)
+	{
+		Material->UpdateGPU(CurrentIndex);
+	}
+	DefaultMaterial->UpdateGPU(CurrentIndex);
 	//삼각형 그리기
 	CommandList->SetPipelineState(PipelineState);
 	CommandList->SetGraphicsRootSignature(RootSignature);
@@ -269,8 +286,9 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
 	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
-	CommandList->SetGraphicsRootDescriptorTable(1, ModelMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
-	CommandList->SetGraphicsRootConstantBufferView(2, ModelMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
+	
+	//CommandList->SetGraphicsRootDescriptorTable(1, ModelMaterial->GetAlbedoTexture()->GetSRV().GPU); //t0
+	//CommandList->SetGraphicsRootConstantBufferView(2, ModelMaterial->GetConstantBufferGPUAddress(CurrentIndex)); //b1
 	CommandList->SetGraphicsRootConstantBufferView(3, CurrentFrame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
 
 	CommandList->RSSetViewports(1, &Viewport);
@@ -286,8 +304,21 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
 	
-	CommandList->DrawIndexedInstanced(ModelMesh->GetIndexCount(), 1, 0, 0, 0);
-	
+	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
+	{
+		std::shared_ptr<Material> Material = DefaultMaterial;
+
+		if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < ModelMaterials.size())
+		{
+			Material = ModelMaterials[SubMesh.MaterialIndex];
+		}
+		CommandList->SetGraphicsRootDescriptorTable(1, Material->GetAlbedoTexture()->GetSRV().GPU); //t0
+		CommandList->SetGraphicsRootConstantBufferView(2, Material->GetConstantBufferGPUAddress(CurrentIndex)); //b1
+
+		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
+	}
+
+
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 

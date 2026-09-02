@@ -100,7 +100,8 @@ private:
 
 	std::shared_ptr<Texture> DefaultWhiteTexture;
 	std::unique_ptr<Mesh> ModelMesh = nullptr;
-	std::shared_ptr<Material> ModelMaterial = nullptr;
+	std::shared_ptr<Material> DefaultMaterial;
+	std::vector<std::shared_ptr<Material>> ModelMaterials;
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
