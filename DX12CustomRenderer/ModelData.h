@@ -25,6 +25,7 @@ struct MaterialData
 	
 	std::optional<ImageData> BaseColorImage;
 	std::optional<ImageData> MetallicRoughnessImage;
+	std::optional<ImageData> NormalMapImage;
 };
 
 struct ModelData

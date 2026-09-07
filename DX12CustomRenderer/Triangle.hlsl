@@ -1,5 +1,6 @@
 Texture2D AlbedoTexture : register(t0);
 Texture2D MetallicRoughnessTexture : register(t1);
+Texture2D NormalMapTexture : register(t2);
 SamplerState LinearSampler : register(s0);
 
 static const float PI = 3.1415926535;
@@ -10,16 +11,17 @@ struct VSInput
     float4 Color    : COLOR;
     float2 UV       : TEXCOORD;
     float3 Normal   : NORMAL;
+    float4 Tangent  : Tangent;
 };
 
 struct VSOutput
 {
     float4 Position : SV_POSITION;
-    float4 Color    : COLOR;
     float2 UV       : TEXCOORD;
-    float3 Normal   : NORMAL;
-
-    float3 WorldPosition : POSITION1;
+    
+    float3 WorldNormal   : TEXCOORD1;
+    float4 WorldTangent  : TEXCOORD2;
+    float3 WorldPosition : TEXCOORD3;
 };
 
 cbuffer TransformBuffer : register(b0)
@@ -102,6 +104,7 @@ VSOutput VSMain(VSInput Input)
     VSOutput Output;
     
     float3 WorldNormal = mul(float4(Input.Normal, 0.0f), WorldInverseTranspose).xyz;
+    float3 T = mul(float4(Input.Tangent.xyz, 0.0f), World).xyz;
 
     Output.Position = mul(float4(Input.Position, 1.0f), World);  
     Output.Position = mul(Output.Position, View);
@@ -109,19 +112,29 @@ VSOutput VSMain(VSInput Input)
 
     Output.WorldPosition = mul(float4(Input.Position, 1.0f), World).xyz;
 
-    Output.Color = Input.Color;
     Output.UV = Input.UV;
-    Output.Normal = normalize(WorldNormal);
+    Output.WorldNormal = normalize(WorldNormal);
+    Output.WorldTangent = float4(normalize(T), Input.Tangent.w);
 
     return Output;
 }
 
 float4 PSMain(VSOutput Input) : SV_TARGET
 {
-    float3 N = normalize(Input.Normal);  //Normal
+    float3 N = normalize(Input.WorldNormal);  //Normal
+    float3 T = normalize(Input.WorldTangent.xyz); //Tangent for TangentSpace
     float3 L = normalize(-LightDirection); //Light Direction
     float3 V = normalize(CameraPosition - Input.WorldPosition.xyz); //View Direction
+   
+    //그램슈미트 직교화
+    T = normalize(T - N * dot(T, N)); 
+    float3 B = normalize(cross(N, T)) * Input.WorldTangent.w;  //BiTangent
+    float3 NormalTS = NormalMapTexture.Sample(LinearSampler, Input.UV).xyz;
+    NormalTS = NormalTS * 2.0f - 1.0f;
     
+    float3 NormalWS = normalize(NormalTS.x * T + NormalTS.y * B + NormalTS.z * N);
+    N = NormalWS;
+
     //specular
     float3 H = normalize(L + V); //LightDir vector + ViewDir Vector
 
@@ -134,7 +147,7 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float4 TextureColor = AlbedoTexture.Sample(LinearSampler, Input.UV);
     float3 Albedo = TextureColor.rgb * BaseColor.rgb;
 
-    float3 F0 =lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
 
     float D = DistributionGGX(N, H, Roughness);
     float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
@@ -160,5 +173,10 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float3 DisplayColor = LinearToSRGB(saturate(FinalColor));
 
     return float4(DisplayColor, TextureColor.a * BaseColor.a);
-    //return float4(FinalColor, TextureColor.a * BaseColor.a);
+
+    N = normalize(Input.WorldNormal);
+
+    return float4(
+        N * 0.5f + 0.5f,
+        1.0f);
 }

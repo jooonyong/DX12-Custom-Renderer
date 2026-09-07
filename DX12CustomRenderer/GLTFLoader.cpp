@@ -26,6 +26,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 				const cgltf_accessor* PositionAccessor = nullptr;
 				const cgltf_accessor* NormalAccessor = nullptr;
 				const cgltf_accessor* UVAccessor = nullptr;
+				const cgltf_accessor* TangentAccessor = nullptr;
 
 				for (auto j = 0; j < Primitive->attributes_count; j++)
 				{
@@ -38,6 +39,10 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 
 					case cgltf_attribute_type_normal:
 						NormalAccessor = Attribute.data;
+						break;
+
+					case cgltf_attribute_type_tangent:
+						TangentAccessor = Attribute.data;
 						break;
 
 					case cgltf_attribute_type_texcoord:
@@ -61,6 +66,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 					float Position[3]{};
 					float Normal[3]{};
 					float UV[2]{};
+					float Tangent[4]{};
 
 					if (!cgltf_accessor_read_float(PositionAccessor, j, Position, 3))
 					{
@@ -80,12 +86,20 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 							return false;
 						}
 					}
-
+					if (TangentAccessor)
+					{
+						if (!cgltf_accessor_read_float(TangentAccessor, j, Tangent, 4))
+						{
+							cgltf_free(Data);
+							return false;
+						}
+					}
 					Vertex VertexData;
 					VertexData.Position = { Position[0], Position[1], Position[2] };
 					VertexData.Normal = { Normal[0],Normal[1],Normal[2] };
 					VertexData.UV = { UV[0], UV[1] };
 					VertexData.Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+					VertexData.Tangent = { Tangent[0], Tangent[1], Tangent[2], Tangent[3] };
 					OutModel.Mesh.Vertices[j] = VertexData;
 				}
 
@@ -178,6 +192,20 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 						OutModel.Materials[i].MetallicRoughnessImage = std::move(ImageData);
 					}
 				}
+				if (GLTFMaterial->normal_texture.texture)
+				{
+					const cgltf_texture* NormalTexture = GLTFMaterial->normal_texture.texture;
+					const cgltf_image* NormalImage = NormalTexture->image;
+
+					ImageData NormalData{};
+					if (!LoadImage(FilePath, NormalImage, NormalData))
+					{
+						cgltf_free(Data);
+						return false;
+					}
+					OutModel.Materials[i].NormalMapImage = std::move(NormalData);
+				}
+
 			}
 		}
 	}

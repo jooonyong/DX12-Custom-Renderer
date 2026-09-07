@@ -99,6 +99,7 @@ private:
 	ImageLoader TextureImageLoader;
 
 	std::shared_ptr<Texture> DefaultWhiteTexture;
+	std::shared_ptr<Texture> DefaultNormalTexture;
 	std::unique_ptr<Mesh> ModelMesh = nullptr;
 	std::shared_ptr<Material> DefaultMaterial;
 	std::vector<std::shared_ptr<Material>> ModelMaterials;

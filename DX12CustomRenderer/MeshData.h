@@ -9,6 +9,7 @@ struct Vertex
 	DirectX::XMFLOAT4 Color;
 	DirectX::XMFLOAT2 UV;
 	DirectX::XMFLOAT3 Normal;
+	DirectX::XMFLOAT4 Tangent;
 };
 
 struct MeshData

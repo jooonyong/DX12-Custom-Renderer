@@ -1,7 +1,7 @@
 #include "Material.h"
 
-Material::Material(std::shared_ptr<Texture> AlbedoTexture, std::shared_ptr<Texture> MRTexture, const DirectX::XMFLOAT4& BaseColor, float Roughness, float Metallic)
-	:AlbedoTexture(std::move(AlbedoTexture)), MetallicRoughnessTexture(std::move(MRTexture))
+Material::Material(std::shared_ptr<Texture> AlbedoTexture, std::shared_ptr<Texture> MRTexture, std::shared_ptr<Texture> NormalTexture, const DirectX::XMFLOAT4& BaseColor, float Roughness, float Metallic)
+	:AlbedoTexture(std::move(AlbedoTexture)), MetallicRoughnessTexture(std::move(MRTexture)),  NormalTexture(std::move(NormalTexture))
 {
 	Constants.BaseColor = BaseColor;
 	Constants.Roughness = Roughness;
@@ -82,6 +82,11 @@ const std::shared_ptr<Texture>& Material::GetAlbedoTexture() const
 const std::shared_ptr<Texture>& Material::GetMetallicRoughnessTexture() const
 {
 	return MetallicRoughnessTexture;
+}
+
+const std::shared_ptr<Texture>& Material::GetNormalTexture() const
+{
+	return NormalTexture;
 }
 
 const DirectX::XMFLOAT4 Material::GetBaseColor() const

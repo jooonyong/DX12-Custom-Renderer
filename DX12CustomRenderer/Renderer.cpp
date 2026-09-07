@@ -161,10 +161,21 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	ImageData WhiteImage;
 	WhiteImage.Width = 1;
 	WhiteImage.Height = 1;
-
 	WhiteImage.Pixels ={255, 255, 255, 255};
+
 	DefaultWhiteTexture = CreateTexture(WhiteImage,TextureColorSpace::SRGB);
 	if (!DefaultWhiteTexture)
+	{
+		return false;
+	}
+
+	ImageData BlueImage;
+	BlueImage.Width = 1;
+	BlueImage.Height = 1;
+	BlueImage.Pixels = { 128,128,255,255 };
+
+	DefaultNormalTexture = CreateTexture(BlueImage, TextureColorSpace::Linear);
+	if (!DefaultNormalTexture)
 	{
 		return false;
 	}
@@ -180,7 +191,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 
 	DirectX::XMFLOAT4 BaseColor = { 1.0f,1.0f,1.0f,1.0f };
-	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, DefaultWhiteTexture, BaseColor, 0.3f, 0.0f);
+	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, DefaultWhiteTexture, DefaultNormalTexture, BaseColor, 0.3f, 0.0f);
 	if(DefaultMaterial)
 	{
 		DefaultMaterial->InitializeGPU(Device.GetDevice(), BufferCount);
@@ -191,6 +202,8 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
 		std::shared_ptr<Texture> MRTexture = DefaultWhiteTexture;
+		std::shared_ptr<Texture> NormalTexture = DefaultNormalTexture;
+
 		if (MaterialData.BaseColorImage.has_value())
 		{
 			ModelTexture = CreateTexture(MaterialData.BaseColorImage.value(), TextureColorSpace::SRGB);
@@ -207,8 +220,15 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 				return false;
 			}
 		}
-
-		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MRTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
+		if (MaterialData.NormalMapImage.has_value())
+		{
+			NormalTexture = CreateTexture(MaterialData.NormalMapImage.value(), TextureColorSpace::Linear);
+			if (!NormalTexture)
+			{
+				return false;
+			}
+		}
+		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MRTexture, NormalTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
 		if (!ModelMaterial)
 		{
 			return false;
@@ -264,7 +284,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0.0f, 0, nullptr);
 
 	//ConstantBuffer Data(World,View,Projection) ¼¼ÆÃ
-	//Angle += 0.00f;
+	Angle += 0.001f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
@@ -320,6 +340,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 		}
 		CommandList->SetGraphicsRootDescriptorTable(1, Material->GetAlbedoTexture()->GetSRV().GPU); //t0
 		CommandList->SetGraphicsRootDescriptorTable(4, Material->GetMetallicRoughnessTexture()->GetSRV().GPU); //t1
+		CommandList->SetGraphicsRootDescriptorTable(5, Material->GetNormalTexture()->GetSRV().GPU); //t2
 		CommandList->SetGraphicsRootConstantBufferView(2, Material->GetConstantBufferGPUAddress(CurrentIndex)); //b1
 
 		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
@@ -358,7 +379,14 @@ bool Renderer::CreateRootSignature()
 	MRRange.BaseShaderRegister = 1; //t1
 	MRRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[5]{};
+	D3D12_DESCRIPTOR_RANGE NormalMapRange{};
+	NormalMapRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	NormalMapRange.RegisterSpace = 0;
+	NormalMapRange.NumDescriptors = 1;
+	NormalMapRange.BaseShaderRegister = 2; //t2
+	NormalMapRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[6]{};
 	//Transform ConstantBuffer
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
@@ -389,6 +417,12 @@ bool Renderer::CreateRootSignature()
 	RootParameters[4].DescriptorTable.pDescriptorRanges = &MRRange;
 	RootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
+	//NormalMap Texture
+	RootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[5].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[5].DescriptorTable.pDescriptorRanges = &NormalMapRange;
+	RootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -406,7 +440,7 @@ bool Renderer::CreateRootSignature()
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc;
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 5;
+	RootDesc.NumParameters = 6;
 	RootDesc.NumStaticSamplers = 1;
 	RootDesc.pParameters = RootParameters;
 	RootDesc.pStaticSamplers = &SamplerDesc;
@@ -562,6 +596,15 @@ bool Renderer::CreatePipelineState()
 			36,
 			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 			0
+		},
+		{
+			"Tangent",
+			0,
+			DXGI_FORMAT_R32G32B32A32_FLOAT,
+			0,
+			48,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
 		}
 	};
 
@@ -569,7 +612,7 @@ bool Renderer::CreatePipelineState()
 	PipelineStateDesc.pRootSignature = RootSignature;
 	PipelineStateDesc.VS = VS;
 	PipelineStateDesc.PS = PS;
-	PipelineStateDesc.InputLayout.NumElements= 4;
+	PipelineStateDesc.InputLayout.NumElements= 5;
 	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
 	PipelineStateDesc.NodeMask = 0;
 	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
