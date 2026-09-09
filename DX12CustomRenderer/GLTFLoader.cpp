@@ -66,7 +66,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 					float Position[3]{};
 					float Normal[3]{};
 					float UV[2]{};
-					float Tangent[4]{};
+					float Tangent[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
 
 					if (!cgltf_accessor_read_float(PositionAccessor, j, Position, 3))
 					{
@@ -88,6 +88,7 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 					}
 					if (TangentAccessor)
 					{
+						OutModel.Mesh.bHasTangent = true;
 						if (!cgltf_accessor_read_float(TangentAccessor, j, Tangent, 4))
 						{
 							cgltf_free(Data);
@@ -146,7 +147,22 @@ bool GLTFLoader::Load(const std::string& FilePath, ModelData& OutModel)
 					}
 					OutModel.SubMeshes.push_back(SubMesh);
 				}
-
+				if (!TangentAccessor)
+				{
+					if (!UVAccessor)
+					{
+						OutModel.Mesh.bHasTangent = false;
+					}
+					else
+					{
+						if (!GenerateTangent(OutModel.Mesh))
+						{
+							cgltf_free(Data);
+							return false;
+						}
+						OutModel.Mesh.bHasTangent = true;
+					}
+				}
 			}
 
 			OutModel.Materials.resize(Data->materials_count);
@@ -237,5 +253,100 @@ bool GLTFLoader::LoadImage(const std::string& FilePath, const cgltf_image* Image
 			return false;
 		}
 	}
+	return true;
+}
+
+bool GLTFLoader::GenerateTangent(MeshData& Mesh)
+{
+	using namespace DirectX;
+
+	if (Mesh.Vertices.empty() || Mesh.Indices.empty() || Mesh.Indices.size() % 3 != 0)
+	{
+		return false;
+	}
+
+	const size_t VertexCount = Mesh.Vertices.size();
+	std::vector<XMFLOAT3> TangentSums(VertexCount, XMFLOAT3{ 0.0f, 0.0f, 0.0f });
+	std::vector<XMFLOAT3> BitangentSums(VertexCount,XMFLOAT3{ 0.0f, 0.0f, 0.0f });
+
+	for (size_t i = 0; i < Mesh.Indices.size(); i += 3)
+	{
+		const uint32_t I0 = Mesh.Indices[i];
+		const uint32_t I1 = Mesh.Indices[i + 1];
+		const uint32_t I2 = Mesh.Indices[i + 2];
+
+		if (I0 >= VertexCount || I1 >= VertexCount || I2 >= VertexCount)
+		{
+			return false;
+		}
+
+		const Vertex& V0 = Mesh.Vertices[I0];
+		const Vertex& V1 = Mesh.Vertices[I1];
+		const Vertex& V2 = Mesh.Vertices[I2];
+
+		XMVECTOR P0 = XMLoadFloat3(&V0.Position);
+		XMVECTOR P1 = XMLoadFloat3(&V1.Position);
+		XMVECTOR P2 = XMLoadFloat3(&V2.Position);
+
+		XMVECTOR Edge1 = P1 - P0;
+		XMVECTOR Edge2 = P2 - P0;
+
+		float DU1 = V1.UV.x - V0.UV.x;
+		float DV1 =	V1.UV.y - V0.UV.y;
+		float DU2 =	V2.UV.x - V0.UV.x;
+		float DV2 =	V2.UV.y - V0.UV.y;
+
+		const float Det = DU1 * DV2 - DV1 * DU2;
+
+		XMVECTOR Tangent = (DV2 * Edge1 - DV1 * Edge2) / Det;
+		XMVECTOR Bitangent = (-DU2 * Edge1 + DU1 * Edge2) / Det;
+
+		const uint32_t Indices[3] = { I0, I1, I2 };
+
+		for (uint32_t Index : Indices)
+		{
+			XMVECTOR CurrentT = XMLoadFloat3(&TangentSums[Index]);
+			XMVECTOR CurrentB = XMLoadFloat3(&BitangentSums[Index]);
+
+			CurrentT += Tangent;
+			CurrentB += Bitangent;
+
+			XMStoreFloat3(&TangentSums[Index], CurrentT);
+			XMStoreFloat3(&BitangentSums[Index], CurrentB);
+		}
+	}
+
+	for (size_t i = 0; i < VertexCount; i++)
+	{
+		Vertex& V = Mesh.Vertices[i];
+		XMVECTOR N = XMLoadFloat3(&V.Normal);
+
+		N = XMVector3Normalize(N);
+		XMVECTOR T = XMLoadFloat3(&TangentSums[i]);
+		//그램슈미트 직교화로 T의 N성분 제거
+		T = T - N * XMVector3Dot(N, T);
+
+		XMVECTOR B = XMLoadFloat3(&BitangentSums[i]);
+		XMVECTOR CalculatedB = XMVector3Cross(N, T);
+
+		float Handedness = 1.0f;
+		float Direction = XMVectorGetX(XMVector3Dot(CalculatedB, B));
+		if (Direction < 0.0f)
+		{
+			Handedness = -1.0f;
+		}
+
+		XMFLOAT3 FinalTangent{};
+
+		XMStoreFloat3(&FinalTangent,T);
+		V.Tangent = 
+		{
+			FinalTangent.x,
+			FinalTangent.y,
+			FinalTangent.z,
+			Handedness
+		};
+	}
+
 	return true;
 }

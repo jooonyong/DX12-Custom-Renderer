@@ -180,7 +180,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	if (!ModelLoader.Load("Assets/Mario.gltf", LoadedModel))
+	if (!ModelLoader.Load("Assets/AK/ak12.gltf", LoadedModel))
 	{
 		return false;
 	}

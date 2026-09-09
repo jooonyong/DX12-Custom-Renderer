@@ -147,11 +147,15 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float4 TextureColor = AlbedoTexture.Sample(LinearSampler, Input.UV);
     float3 Albedo = TextureColor.rgb * BaseColor.rgb;
 
-    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
+    float4 MR = MetallicRoughnessTexture.Sample(LinearSampler, Input.UV);
+    float MaterialRoughness = clamp(MR.g * Roughness, 0.04f, 1.0f);
+    float MaterialMetallic = saturate(MR.b * Metallic);
 
-    float D = DistributionGGX(N, H, Roughness);
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, MaterialMetallic);
+
+    float D = DistributionGGX(N, H, MaterialRoughness);
     float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
-    float G = GeometrySmith(N, V, L, Roughness);
+    float G = GeometrySmith(N, V, L, MaterialRoughness);
 
     float3 Numerator = D * G * F;
     float Denominator = 4.0f * NdotV * NdotL;
@@ -160,7 +164,7 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     //float3 Diffuse = Albedo * LightColor * LightIntensity * NdotL;
    
     float3 KD = 1.0f - F;
-    KD *= (1.0f - Metallic);
+    KD *= (1.0f - MaterialMetallic);
 
     float3 DiffuseBRDF = KD * Albedo / PI;
     
@@ -173,10 +177,4 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float3 DisplayColor = LinearToSRGB(saturate(FinalColor));
 
     return float4(DisplayColor, TextureColor.a * BaseColor.a);
-
-    N = normalize(Input.WorldNormal);
-
-    return float4(
-        N * 0.5f + 0.5f,
-        1.0f);
 }
