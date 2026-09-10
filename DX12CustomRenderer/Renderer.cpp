@@ -11,34 +11,28 @@ Renderer::~Renderer()
 	{
 		CommandQueue.WaitForIdle();
 	}
-	if (RootSignature)
-	{
-		RootSignature->Release();
-		RootSignature = nullptr;
-	}
-	if (PipelineState)
-	{
-		PipelineState->Release();
-		PipelineState = nullptr;
-	}
+
 	for (int i = 0; i < BufferCount; i++)
 	{
-		if (Frame[i].CommandAllocator)
-		{
-			Frame[i].CommandAllocator->Release();
-			Frame[i].CommandAllocator = nullptr;
-		}
 		if (Frame[i].TransformConstantBuffer)
 		{
 			Frame[i].TransformConstantBuffer->Unmap(0, nullptr);
-			Frame[i].TransformConstantBuffer->Release();
 			Frame[i].TransformConstantBufferMappedData = nullptr;
 		}
 		if (Frame[i].DirLgtConstantBuffer)
 		{
 			Frame[i].DirLgtConstantBuffer->Unmap(0, nullptr);
-			Frame[i].DirLgtConstantBuffer->Release();
 			Frame[i].DirLgtConstantBufferMappedData = nullptr;
+		}
+		if (Frame[i].ShadowObjectConstantBuffer)
+		{
+			Frame[i].ShadowObjectConstantBuffer->Unmap(0, nullptr);
+			Frame[i].ShadowObjectMappedData = nullptr;
+		}
+		if (Frame[i].ShadowPassConstantBuffer)
+		{
+			Frame[i].ShadowPassConstantBuffer->Unmap(0, nullptr);
+			Frame[i].ShadowPassMappedData = nullptr;
 		}
 	}
 	if (DepthBuffer)
@@ -69,7 +63,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		{
 			return false;
 		}
-		
+
 		//TRansform ConstantBuffer용 UploadHeap
 		UINT64 BufferSize = (sizeof(TransformConstant) + 255) & ~255;
 
@@ -119,9 +113,55 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		{
 			return false;
 		}
+
+		BufferSize = (sizeof(ShadowObjectConstant) + 255) & ~255;
+		//ShadowObject ConstantBuffer용 UploadHeap
+		D3D12_RESOURCE_DESC ShadowObjectBufferDesc{};
+		ShadowObjectBufferDesc.Width = BufferSize;
+		ShadowObjectBufferDesc.Height = 1;
+		ShadowObjectBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		ShadowObjectBufferDesc.DepthOrArraySize = 1;
+		ShadowObjectBufferDesc.MipLevels = 1;
+		ShadowObjectBufferDesc.SampleDesc = { 1,0 };
+		ShadowObjectBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+		Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
+			&ShadowObjectBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&Frame[i].ShadowObjectConstantBuffer));
+		if (FAILED(Result))
+		{
+			Frame[i].ShadowObjectConstantBuffer->Release();
+			return false;
+		}
+		if (FAILED(Frame[i].ShadowObjectConstantBuffer->Map(0, nullptr, &Frame[i].ShadowObjectMappedData)))
+		{
+			return false;
+		}
+
+		BufferSize = (sizeof(ShadowPassConstant) + 255) & ~255;
+		//ShadowPassConstant ConstantBuffer용 UploadHeap
+		D3D12_RESOURCE_DESC ShadowPassBufferDesc{};
+		ShadowPassBufferDesc.Width = BufferSize;
+		ShadowPassBufferDesc.Height = 1;
+		ShadowPassBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		ShadowPassBufferDesc.DepthOrArraySize = 1;
+		ShadowPassBufferDesc.MipLevels = 1;
+		ShadowPassBufferDesc.SampleDesc = { 1,0 };
+		ShadowPassBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+		Result = Device.GetDevice()->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE,
+			&ShadowPassBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&Frame[i].ShadowPassConstantBuffer));
+		if (FAILED(Result))
+		{
+			Frame[i].ShadowPassConstantBuffer->Release();
+			return false;
+		}
+		if (FAILED(Frame[i].ShadowPassConstantBuffer->Map(0, nullptr, &Frame[i].ShadowPassMappedData)))
+		{
+			return false;
+		}
 	}
 	//CommandList는 1개만 있어도 됨
-	if (!CommandContext.Initialize(&Device, Frame[0].CommandAllocator))
+	if (!CommandContext.Initialize(&Device, Frame[0].CommandAllocator.Get()))
 	{
 		return false;
 	}
@@ -129,7 +169,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	if (!ResourceUploader.Initialize(&Device, &CommandQueue, &CommandContext, Frame[0].CommandAllocator))
+	if (!ResourceUploader.Initialize(&Device, &CommandQueue, &CommandContext, Frame[0].CommandAllocator.Get()))
 	{
 		return false;
 	}
@@ -137,10 +177,15 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateShadowMap())
+	{
+		return false;
+	}
 
+	UpdateShadowViewport(2048, 2048);
 	UpdateViewport(Width, Height);
 
-	if (!CreateRootSignature())
+	if (!CreateShadowRootSignature())
 	{
 		return false;
 	}
@@ -149,7 +194,18 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	if (!CreatePipelineState())
+
+	if (!CreateShadowPipelineState())
+	{
+		return false;
+	}
+
+	if (!CreateMainRootSignature())
+	{
+		return false;
+	}
+
+	if (!CreateMainPipelineState())
 	{
 		return false;
 	}
@@ -161,9 +217,9 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	ImageData WhiteImage;
 	WhiteImage.Width = 1;
 	WhiteImage.Height = 1;
-	WhiteImage.Pixels ={255, 255, 255, 255};
+	WhiteImage.Pixels = { 255, 255, 255, 255 };
 
-	DefaultWhiteTexture = CreateTexture(WhiteImage,TextureColorSpace::SRGB);
+	DefaultWhiteTexture = CreateTexture(WhiteImage, TextureColorSpace::SRGB);
 	if (!DefaultWhiteTexture)
 	{
 		return false;
@@ -192,7 +248,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 	DirectX::XMFLOAT4 BaseColor = { 1.0f,1.0f,1.0f,1.0f };
 	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, DefaultWhiteTexture, DefaultNormalTexture, BaseColor, 0.3f, 0.0f);
-	if(DefaultMaterial)
+	if (DefaultMaterial)
 	{
 		DefaultMaterial->InitializeGPU(Device.GetDevice(), BufferCount);
 	}
@@ -249,24 +305,46 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	
+
 	return true;
+
 }
 
-void Renderer::RenderFrame(const Camera& MainCamera)
+void Renderer::RenderShadowPass(FrameResource& Frame)
 {
-	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
-	FrameResource& CurrentFrame = Frame[CurrentIndex];
-	
-	if(CurrentFrame.FenceValue != 0)
-	{
-		CommandQueue.WaitForFence(CurrentFrame.FenceValue);
-	}
+	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
-	CommandContext.Reset(CurrentFrame.CommandAllocator);
-	
+	CommandList->SetPipelineState(ShadowPipelineState.Get());
+	CommandList->SetGraphicsRootSignature(ShadowRootSignature.Get());
+
+	CommandList->RSSetViewports(1, &ShadowViewport);
+	CommandList->RSSetScissorRects(1, &ShadowScissorRect);
+
+	//RenderTarget를 사용하지 않고 DepthBuffer만 사용하기 때문에 RenderTarget은 nullptr로 설정
+	CommandList->OMSetRenderTargets(0, nullptr, FALSE, &ShadowDSV);
+
+	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = ModelMesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView = ModelMesh->GetIndexBufferView();
+
+	CommandList->IASetVertexBuffers(0, 1, &VBView);
+	CommandList->IASetIndexBuffer(&IBView);
+
+	CommandList->SetGraphicsRootConstantBufferView(0, Frame.ShadowObjectConstantBuffer->GetGPUVirtualAddress());
+	CommandList->SetGraphicsRootConstantBufferView(1, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress());
+
+	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
+	{
+		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
+	}
+}
+
+void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
+{
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
+	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
 
 	D3D12_RESOURCE_BARRIER Barrier{};
 	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -283,40 +361,15 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	D3D12_CPU_DESCRIPTOR_HANDLE DSV = DSVHeap->GetCPUDescriptorHandleForHeapStart();
 	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0.0f, 0, nullptr);
 
-	//ConstantBuffer Data(World,View,Projection) 세팅
-	Angle += 0.001f;
-	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
-	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
-	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
-	DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr,World);
-
-	TransformConstant ConstantData;
-	DirectX::XMStoreFloat4x4(&ConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));
-	DirectX::XMStoreFloat4x4(&ConstantData.ViewMatrix, DirectX::XMMatrixTranspose(View));
-	DirectX::XMStoreFloat4x4(&ConstantData.ProjectionMatrix, DirectX::XMMatrixTranspose(Projection));
-	DirectX::XMStoreFloat4x4(&ConstantData.WorldInverseTranspose, DirectX::XMMatrixTranspose(WorldInverseTranspose));
-
-	ConstantData.CameraPosition = MainCamera.GetPosition();
-
-	memcpy(CurrentFrame.TransformConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
-
-	DirectionalLightConstant DirLgtData{};
-	memcpy(CurrentFrame.DirLgtConstantBufferMappedData, &DirLgtData, sizeof(DirectionalLightConstant));
-
-	for (auto Material : ModelMaterials)
-	{
-		Material->UpdateGPU(CurrentIndex);
-	}
-	DefaultMaterial->UpdateGPU(CurrentIndex);
 	//삼각형 그리기
-	CommandList->SetPipelineState(PipelineState);
-	CommandList->SetGraphicsRootSignature(RootSignature);
-	
-	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap()};
+	CommandList->SetPipelineState(MainPipelineState.Get());
+	CommandList->SetGraphicsRootSignature(MainRootSignature.Get());
+
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
-	CommandList->SetGraphicsRootConstantBufferView(0, CurrentFrame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
-	CommandList->SetGraphicsRootConstantBufferView(3, CurrentFrame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
+	CommandList->SetGraphicsRootConstantBufferView(0, Frame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
+	CommandList->SetGraphicsRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
 
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -325,12 +378,12 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandList->OMSetRenderTargets(1, &RTV, FALSE, &DSV);
 
 	const D3D12_VERTEX_BUFFER_VIEW& VBView = ModelMesh->GetVertexBufferView();
-	const D3D12_INDEX_BUFFER_VIEW& IBView =	ModelMesh->GetIndexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView = ModelMesh->GetIndexBufferView();
 
 	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
-	
+
 	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
 	{
 		std::shared_ptr<Material> Material = DefaultMaterial;
@@ -350,6 +403,49 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 
 	CommandList->ResourceBarrier(1, &Barrier);
+}
+
+void Renderer::RenderFrame(const Camera& MainCamera)
+{
+	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
+	FrameResource& CurrentFrame = Frame[CurrentIndex];
+
+	if (CurrentFrame.FenceValue != 0)
+	{
+		CommandQueue.WaitForFence(CurrentFrame.FenceValue);
+	}
+
+	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
+
+	//ConstantBuffer Data세팅
+	Angle += 0.001f;
+	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
+	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
+	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
+	DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr, World);
+
+	TransformConstant ConstantData;
+	DirectX::XMStoreFloat4x4(&ConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));
+	DirectX::XMStoreFloat4x4(&ConstantData.ViewMatrix, DirectX::XMMatrixTranspose(View));
+	DirectX::XMStoreFloat4x4(&ConstantData.ProjectionMatrix, DirectX::XMMatrixTranspose(Projection));
+	DirectX::XMStoreFloat4x4(&ConstantData.WorldInverseTranspose, DirectX::XMMatrixTranspose(WorldInverseTranspose));
+
+	ConstantData.CameraPosition = MainCamera.GetPosition();
+
+	memcpy(CurrentFrame.TransformConstantBufferMappedData, &ConstantData, sizeof(TransformConstant));
+	memcpy(CurrentFrame.DirLgtConstantBufferMappedData, &DirLgtData, sizeof(DirectionalLightConstant));
+
+	UpdateShadowObjectConstant(CurrentFrame, World);
+	UpdateShadowPassConstant(CurrentFrame);
+	
+	for (auto Material : ModelMaterials)
+	{
+		Material->UpdateGPU(CurrentIndex);
+	}
+	DefaultMaterial->UpdateGPU(CurrentIndex);
+
+	RenderShadowPass(CurrentFrame);
+	RenderMainPass(CurrentFrame, MainCamera);
 
 	CommandContext.Close();
 	CommandQueue.Execute(&CommandContext);
@@ -363,7 +459,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CurrentFrame.FenceValue = FenceValue;
 }
 
-bool Renderer::CreateRootSignature()
+bool Renderer::CreateMainRootSignature()
 {
 	D3D12_DESCRIPTOR_RANGE SRVRange{};
 	SRVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -395,7 +491,7 @@ bool Renderer::CreateRootSignature()
 
 	//AlbedoTexture DescriptorTable
 	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1; 
+	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 	RootParameters[1].DescriptorTable.pDescriptorRanges = &SRVRange;
 	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
@@ -456,7 +552,7 @@ bool Renderer::CreateRootSignature()
 		return false;
 	}
 
-	if (FAILED(Device.GetDevice()->CreateRootSignature(0, SerializedRootSignature->GetBufferPointer(), SerializedRootSignature->GetBufferSize(), IID_PPV_ARGS(&RootSignature))))
+	if (FAILED(Device.GetDevice()->CreateRootSignature(0, SerializedRootSignature->GetBufferPointer(), SerializedRootSignature->GetBufferSize(), IID_PPV_ARGS(&MainRootSignature))))
 	{
 		return false;
 	}
@@ -464,16 +560,114 @@ bool Renderer::CreateRootSignature()
 	return true;
 }
 
-bool Renderer::CreateShaders()
+bool Renderer::CreateShadowRootSignature()
 {
-	VertexShader = CompileShader(L"Triangle.hlsl", L"VSMain",L"vs_6_0");
-	if (!VertexShader)
+	D3D12_ROOT_PARAMETER RootParameters[2]{};
+	//ShadowObject ConstantBuffer
+	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
+	RootParameters[0].Descriptor.RegisterSpace = 0;
+	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+	//ShadowPass ConstantBuffer
+	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[1].Descriptor.ShaderRegister = 1; // b1
+	RootParameters[1].Descriptor.RegisterSpace = 0;
+	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
+	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	RootDesc.NumParameters = 2;
+	RootDesc.NumStaticSamplers = 0;
+	RootDesc.pParameters = RootParameters;
+	RootDesc.pStaticSamplers = nullptr;
+
+	ID3DBlob* SerializedRootSignature;
+	ID3DBlob* ErrorBlob;
+	if (FAILED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SerializedRootSignature, &ErrorBlob)))
+	{
+		if (ErrorBlob)
+		{
+			OutputDebugStringA(static_cast<const char*>(ErrorBlob->GetBufferPointer()));
+		}
+		return false;
+	}
+
+	if (FAILED(Device.GetDevice()->CreateRootSignature(0, SerializedRootSignature->GetBufferPointer(), SerializedRootSignature->GetBufferSize(), IID_PPV_ARGS(&ShadowRootSignature))))
 	{
 		return false;
 	}
 
-	PixelShader = CompileShader(L"Triangle.hlsl", L"PSMain",L"ps_6_0");
-	if (!PixelShader)
+	return true;
+}
+
+bool Renderer::CreateShadowPipelineState()
+{
+	D3D12_SHADER_BYTECODE VS;
+	VS.pShaderBytecode = ShadowVertexShader->GetBufferPointer();
+	VS.BytecodeLength = ShadowVertexShader->GetBufferSize();
+
+	D3D12_INPUT_ELEMENT_DESC InputLayout[] = {
+		{
+			"POSITION",
+			0,
+			DXGI_FORMAT_R32G32B32_FLOAT,
+			0,
+			0,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		}
+	};
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC PipelineStateDesc{};
+	PipelineStateDesc.pRootSignature = ShadowRootSignature.Get();
+	PipelineStateDesc.VS = VS;
+	PipelineStateDesc.InputLayout.NumElements = 1;
+	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
+	PipelineStateDesc.NodeMask = 0;
+	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	PipelineStateDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	PipelineStateDesc.RasterizerState.MultisampleEnable = false;
+	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	PipelineStateDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].LogicOpEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	PipelineStateDesc.DepthStencilState.DepthEnable = true;
+	PipelineStateDesc.DepthStencilState.StencilEnable = false;
+	PipelineStateDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	PipelineStateDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	PipelineStateDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	PipelineStateDesc.NumRenderTargets = 1;
+	PipelineStateDesc.SampleDesc.Count = 1;
+	PipelineStateDesc.SampleDesc.Quality = 0;
+	PipelineStateDesc.SampleMask = UINT_MAX;
+
+	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&ShadowPipelineState))))
+	{
+		return false;
+	}
+	return true;
+}
+
+bool Renderer::CreateShaders()
+{
+	MainVertexShader = CompileShader(L"Triangle.hlsl", L"VSMain", L"vs_6_0");
+	if (!MainVertexShader)
+	{
+		return false;
+	}
+
+	MainPixelShader = CompileShader(L"Triangle.hlsl", L"PSMain", L"ps_6_0");
+	if (!MainPixelShader)
+	{
+		return false;
+	}
+
+	//Shadow Shader
+	ShadowVertexShader = CompileShader(L"ShadowShader.hlsl", L"VSMain", L"vs_6_0");
+	if (!ShadowVertexShader)
 	{
 		return false;
 	}
@@ -550,15 +744,15 @@ Microsoft::WRL::ComPtr<IDxcBlob> Renderer::CompileShader(const wchar_t* FilePath
 	return ShaderBlob;
 }
 
-bool Renderer::CreatePipelineState()
+bool Renderer::CreateMainPipelineState()
 {
 	D3D12_SHADER_BYTECODE VS;
 	D3D12_SHADER_BYTECODE PS;
-	VS.pShaderBytecode = VertexShader->GetBufferPointer();
-	VS.BytecodeLength = VertexShader->GetBufferSize();
+	VS.pShaderBytecode = MainVertexShader->GetBufferPointer();
+	VS.BytecodeLength = MainVertexShader->GetBufferSize();
 
-	PS.pShaderBytecode = PixelShader->GetBufferPointer();
-	PS.BytecodeLength = PixelShader->GetBufferSize();
+	PS.pShaderBytecode = MainPixelShader->GetBufferPointer();
+	PS.BytecodeLength = MainPixelShader->GetBufferSize();
 
 	D3D12_INPUT_ELEMENT_DESC InputLayout[] = {
 		{
@@ -609,10 +803,10 @@ bool Renderer::CreatePipelineState()
 	};
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC PipelineStateDesc{};
-	PipelineStateDesc.pRootSignature = RootSignature;
+	PipelineStateDesc.pRootSignature = MainRootSignature.Get();
 	PipelineStateDesc.VS = VS;
 	PipelineStateDesc.PS = PS;
-	PipelineStateDesc.InputLayout.NumElements= 5;
+	PipelineStateDesc.InputLayout.NumElements = 5;
 	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
 	PipelineStateDesc.NodeMask = 0;
 	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
@@ -634,7 +828,7 @@ bool Renderer::CreatePipelineState()
 	PipelineStateDesc.SampleDesc.Quality = 0;
 	PipelineStateDesc.SampleMask = UINT_MAX;
 
-	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&PipelineState))))
+	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&MainPipelineState))))
 	{
 		return false;
 	}
@@ -693,6 +887,59 @@ bool Renderer::CreateDepthBuffer()
 	return true;
 }
 
+bool Renderer::CreateShadowMap()
+{
+	D3D12_RESOURCE_DESC ShadowTextureDesc{};
+	ShadowTextureDesc.Width = 2048;
+	ShadowTextureDesc.Height = 2048;
+	ShadowTextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	ShadowTextureDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+	ShadowTextureDesc.MipLevels = 1;
+	ShadowTextureDesc.DepthOrArraySize = 1;
+	ShadowTextureDesc.SampleDesc = { 1,0 };
+	ShadowTextureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	ShadowTextureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE ClearValue{};
+	ClearValue.DepthStencil.Depth = 1.0f;
+	ClearValue.DepthStencil.Stencil = 0;
+	ClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+
+	D3D12_HEAP_PROPERTIES HeapProperties{};
+	HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE,
+		&ShadowTextureDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &ClearValue, IID_PPV_ARGS(&ShadowDepthTexture));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	D3D12_DESCRIPTOR_HEAP_DESC DSVHeapDesc{};
+	DSVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	DSVHeapDesc.NumDescriptors = 1;
+	DSVHeapDesc.NodeMask = 0;
+	DSVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+	Result = Device.GetDevice()->CreateDescriptorHeap(&DSVHeapDesc, IID_PPV_ARGS(&ShadowDSVHeap));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC DSVDesc{};
+	DSVDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	DSVDesc.Texture2D.MipSlice = 0;
+	DSVDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+	ShadowDSV = ShadowDSVHeap->GetCPUDescriptorHandleForHeapStart();
+	Device.GetDevice()->CreateDepthStencilView(ShadowDepthTexture.Get(), &DSVDesc, ShadowDSV);
+
+	//SRVDescriptorAllocator.Allocate();
+	return true;
+}
+
 std::shared_ptr<Texture> Renderer::CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace)
 {
 	Microsoft::WRL::ComPtr<ID3D12Resource> TextureResource;
@@ -725,7 +972,7 @@ std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
 
 	const UINT VertexBufferSize = Data.Vertices.size() * sizeof(Vertex);
 	const UINT IndexBufferSize = Data.Indices.size() * sizeof(uint32_t);
-	
+
 	ResourceUploader.UploadBuffer(Data.Vertices.data(), VertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, LocalVertexBuffer);
 	ResourceUploader.UploadBuffer(Data.Indices.data(), IndexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, LocalIndexBuffer);
 
@@ -733,6 +980,50 @@ std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
 		std::move(LocalIndexBuffer), IndexBufferSize, static_cast<UINT>(Data.Indices.size()));
 }
 
+void Renderer::UpdateShadowObjectConstant(FrameResource& Frame, const DirectX::XMMATRIX& WorldMatrix)
+{
+	ShadowObjectConstant Data{};
+	DirectX::XMStoreFloat4x4(&Data.WorldMatrix, DirectX::XMMatrixTranspose(WorldMatrix));
+
+	memcpy(Frame.ShadowObjectMappedData, &Data, sizeof(Data));
+}
+
+void Renderer::UpdateShadowPassConstant(FrameResource& Frame)
+{
+	using namespace DirectX;
+
+	XMVECTOR LightDir = XMVector3Normalize(XMVectorSet(DirLgtData.Direction.x, DirLgtData.Direction.y, DirLgtData.Direction.z, 0.0f));
+	XMVECTOR SceneCenter = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
+
+	const float LightDistance = 20.0f;
+	XMVECTOR LightPosition = SceneCenter - LightDir * LightDistance;
+
+	XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMMATRIX LightViewMatrix = XMMatrixLookAtLH(LightPosition, SceneCenter, Up);
+	XMMATRIX LightProjectionMatrix = XMMatrixOrthographicLH(20.0f, 20.0f, 0.1f, 100.0f);
+
+	XMMATRIX LightViewProjection = LightViewMatrix * LightProjectionMatrix;
+
+
+	ShadowPassConstant Data{};
+	XMStoreFloat4x4(&Data.LightViewProjectionMatrix, XMMatrixTranspose(LightViewProjection));
+	memcpy(Frame.ShadowPassMappedData, &Data, sizeof(Data));
+}
+
+
+void Renderer::UpdateShadowViewport(UINT Width, UINT Height)
+{
+	ShadowViewport.Width = static_cast<float>(Width);
+	ShadowViewport.Height = static_cast<float>(Height);
+	ShadowViewport.TopLeftX = 0.0f;
+	ShadowViewport.TopLeftY = 0.0f;
+	ShadowViewport.MinDepth = 0.0f;
+	ShadowViewport.MaxDepth = 1.0f;
+	ShadowScissorRect.left = 0;
+	ShadowScissorRect.top = 0;
+	ShadowScissorRect.right = static_cast<LONG>(Width);
+	ShadowScissorRect.bottom = static_cast<LONG>(Height);
+}
 
 void Renderer::UpdateViewport(UINT Width, UINT Height)
 {
@@ -751,4 +1042,3 @@ void Renderer::UpdateViewport(UINT Width, UINT Height)
 	ScissorRect.right = static_cast<LONG>(Width);
 	ScissorRect.bottom = static_cast<LONG>(Height);
 }
-

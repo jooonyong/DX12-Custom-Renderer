@@ -1,6 +1,7 @@
 Texture2D AlbedoTexture : register(t0);
 Texture2D MetallicRoughnessTexture : register(t1);
 Texture2D NormalMapTexture : register(t2);
+
 SamplerState LinearSampler : register(s0);
 
 static const float PI = 3.1415926535;
@@ -130,6 +131,8 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     T = normalize(T - N * dot(T, N)); 
     float3 B = normalize(cross(N, T)) * Input.WorldTangent.w;  //BiTangent
     float3 NormalTS = NormalMapTexture.Sample(LinearSampler, Input.UV).xyz;
+
+    //³ë¸Ö¸Ê [0,1] to [-1,1]
     NormalTS = NormalTS * 2.0f - 1.0f;
     
     float3 NormalWS = normalize(NormalTS.x * T + NormalTS.y * B + NormalTS.z * N);

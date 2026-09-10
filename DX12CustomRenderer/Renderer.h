@@ -25,13 +25,19 @@ class Material;
 
 struct FrameResource
 {
-	ID3D12CommandAllocator* CommandAllocator = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator = nullptr;
 	UINT FenceValue = 0;
-	ID3D12Resource* TransformConstantBuffer = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> TransformConstantBuffer = nullptr;
 	void* TransformConstantBufferMappedData = nullptr;
 
-	ID3D12Resource* DirLgtConstantBuffer = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> DirLgtConstantBuffer = nullptr;
 	void* DirLgtConstantBufferMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowPassConstantBuffer;
+	void* ShadowPassMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowObjectConstantBuffer;
+	void* ShadowObjectMappedData = nullptr;
 };
 
 struct TransformConstant
@@ -53,6 +59,16 @@ struct DirectionalLightConstant
 	float AmbientIntensity = 0.1f;
 };
 
+struct ShadowObjectConstant
+{
+	DirectX::XMFLOAT4X4 WorldMatrix;
+};
+
+struct ShadowPassConstant
+{
+	DirectX::XMFLOAT4X4 LightViewProjectionMatrix;
+};
+
 class Renderer
 {
 public:
@@ -61,19 +77,29 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
+	void RenderShadowPass(FrameResource& Frame);
+	void RenderMainPass(FrameResource& Frame, const Camera& MainCamera);
 	void RenderFrame(const Camera& MainCamera);
 
-	bool CreateRootSignature();
+	bool CreateMainRootSignature();
+	bool CreateMainPipelineState();
+
+	bool CreateShadowRootSignature();
+	bool CreateShadowPipelineState();
+
 	bool CreateShaders();
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const wchar_t* FilePath, const wchar_t* EntryPoint, const wchar_t* TargetProfile);
 
-	bool CreatePipelineState();
-
 	bool CreateDepthBuffer();
+	bool CreateShadowMap();
 
 	std::shared_ptr<Texture> CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
+	void UpdateShadowObjectConstant(FrameResource& Frame, const DirectX::XMMATRIX& WorldMatrix);
+	void UpdateShadowPassConstant(FrameResource& Frame);
+
+	void UpdateShadowViewport(UINT Width, UINT Height);
 	void UpdateViewport(UINT Width, UINT Height);
 
 private:
@@ -84,13 +110,19 @@ private:
 
 	FrameResource Frame[BufferCount];
 
-	ID3D12RootSignature* RootSignature = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> MainRootSignature = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> ShadowRootSignature = nullptr;
 
-	Microsoft::WRL::ComPtr<IDxcBlob> VertexShader;
-	Microsoft::WRL::ComPtr<IDxcBlob> PixelShader;
+	Microsoft::WRL::ComPtr<IDxcBlob> MainVertexShader;
+	Microsoft::WRL::ComPtr<IDxcBlob> MainPixelShader;
 
-	ID3D12PipelineState* PipelineState = nullptr;
-	
+	Microsoft::WRL::ComPtr<IDxcBlob> ShadowVertexShader;
+
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> MainPipelineState = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> ShadowPipelineState = nullptr;
+
+	DirectionalLightConstant DirLgtData{};
+
 	D3D12ResourceUploader ResourceUploader{};
 	D3D12DescriptorAllocator SRVDescriptorAllocator;
 
@@ -107,8 +139,16 @@ private:
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
 
+	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowDepthTexture;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> ShadowDSVHeap;
+	D3D12_CPU_DESCRIPTOR_HANDLE ShadowDSV;
+	D3D12DescriptorHandle ShadowSRV;
+	
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;
+
+	D3D12_VIEWPORT ShadowViewport;
+	D3D12_RECT ShadowScissorRect;
 
 	UINT Width;
 	UINT Height;
