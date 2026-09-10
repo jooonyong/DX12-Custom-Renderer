@@ -168,11 +168,11 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float ShadowFactor;
     if (StoredDepth + ShadowBias < CurrentDepth)
     {
-        ShadowFactor = 1.0f; //Shadow
+        ShadowFactor = 0.0f; //Shadow
     }
     else
     {
-        ShadowFactor = 0.0f; //No Shadow
+        ShadowFactor = 1.0f; //No Shadow
     }
 
     float4 TextureColor = AlbedoTexture.Sample(LinearSampler, Input.UV);

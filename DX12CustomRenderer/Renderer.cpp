@@ -381,6 +381,7 @@ void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
 	CommandList->SetGraphicsRootConstantBufferView(0, Frame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
 	CommandList->SetGraphicsRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
 	CommandList->SetGraphicsRootConstantBufferView(6, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress()); //b3
+	CommandList->SetGraphicsRootDescriptorTable(7, ShadowSRV.GPU); //t3
 
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -409,8 +410,7 @@ void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
 
 		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
 	}
-	CommandList->SetGraphicsRootDescriptorTable(7, ShadowSRV.GPU); //t3
-	
+
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 
@@ -577,12 +577,12 @@ bool Renderer::CreateMainRootSignature()
 	SamplerDesc[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	//ShadowMap용 Sampler
-	SamplerDesc[1].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
 	SamplerDesc[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
 	SamplerDesc[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
 	SamplerDesc[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-	SamplerDesc[0].MipLODBias = 0.0f;
-	SamplerDesc[0].MaxAnisotropy = 1;
+	SamplerDesc[1].MipLODBias = 0.0f;
+	SamplerDesc[1].MaxAnisotropy = 1;
 	SamplerDesc[1].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 	SamplerDesc[1].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;  //sampling범위밖을 depth = 1로 설정해서 범위 밖은 그림자가 안생기게함
 	SamplerDesc[1].MinLOD = 0.0f;	
@@ -997,6 +997,16 @@ bool Renderer::CreateShadowMap()
 
 	ShadowSRV = SRVDescriptorAllocator.Allocate();
 	
+	D3D12_SHADER_RESOURCE_VIEW_DESC ShadowSRVDesc{};
+	ShadowSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	ShadowSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	ShadowSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	ShadowSRVDesc.Texture2D.MostDetailedMip = 0;
+	ShadowSRVDesc.Texture2D.MipLevels = 1;
+	ShadowSRVDesc.Texture2D.PlaneSlice = 0;
+	ShadowSRVDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+	Device.GetDevice()->CreateShaderResourceView(ShadowDepthTexture.Get(), &ShadowSRVDesc, ShadowSRV.CPU);
 	return true;
 }
 
