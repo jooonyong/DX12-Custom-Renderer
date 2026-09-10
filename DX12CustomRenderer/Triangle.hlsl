@@ -1,8 +1,10 @@
 Texture2D AlbedoTexture : register(t0);
 Texture2D MetallicRoughnessTexture : register(t1);
 Texture2D NormalMapTexture : register(t2);
+Texture2D ShadowMapTexture : register(t3);
 
 SamplerState LinearSampler : register(s0);
+SamplerState ShadowSampler : register(s1);
 
 static const float PI = 3.1415926535;
 
@@ -23,6 +25,7 @@ struct VSOutput
     float3 WorldNormal   : TEXCOORD1;
     float4 WorldTangent  : TEXCOORD2;
     float3 WorldPosition : TEXCOORD3;
+	float4 ShadowPosition : TEXCOORD4;
 };
 
 cbuffer TransformBuffer : register(b0)
@@ -52,6 +55,10 @@ cbuffer DirLgtBuffer : register(b2)
     float AmbientIntensity;
 }
 
+cbuffer ShadowPassBuffer : register(b3)
+{
+    float4x4 LightViewProjection;
+}
 //Cook-Torrance 반사 모델을 위한 함수
 //Specular BRDF = (D * F * G) / (4 * N·L * N·V)
 //D: Normal Distribution Function
@@ -112,7 +119,8 @@ VSOutput VSMain(VSInput Input)
     Output.Position = mul(Output.Position, Projection);
 
     Output.WorldPosition = mul(float4(Input.Position, 1.0f), World).xyz;
-
+    Output.ShadowPosition = mul(Output.WorldPosition, LightViewProjection);
+    
     Output.UV = Input.UV;
     Output.WorldNormal = normalize(WorldNormal);
     Output.WorldTangent = float4(normalize(T), Input.Tangent.w);
@@ -147,6 +155,26 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float NdotH = max(dot(N, H), 0.0f);
     float NdotV = max(dot(N, V), 0.0f);
 
+    //Shadow 계산
+    float3 ShadowNDC = Input.ShadowPosition.xyz / Input.ShadowPosition.w;
+    float2 ShadowUV;
+    ShadowUV.x = ShadowNDC.x * 0.5f + 0.5f;
+	ShadowUV.y = -ShadowNDC.y * 0.5f + 0.5f; //y축과 v축이 반대이므로 -1을 곱해줌
+
+    float StoredDepth = ShadowMapTexture.SampleLevel(ShadowSampler, ShadowUV, 0).r;
+    float CurrentDepth = Input.ShadowPosition.z / Input.ShadowPosition.w;
+
+    float ShadowBias = 0.001f;
+    float ShadowFactor;
+    if (StoredDepth + ShadowBias < CurrentDepth)
+    {
+        ShadowFactor = 1.0f; //Shadow
+    }
+    else
+    {
+        ShadowFactor = 0.0f; //No Shadow
+    }
+
     float4 TextureColor = AlbedoTexture.Sample(LinearSampler, Input.UV);
     float3 Albedo = TextureColor.rgb * BaseColor.rgb;
 
@@ -173,9 +201,10 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     
     float3 Radiance = LightColor * LightIntensity;
     float3 DirectLighting = (DiffuseBRDF + Specular) * Radiance * NdotL;
-    float3 Ambient = 0;
-    
-    float3 FinalColor = DirectLighting;
+    float3 Ambient = Albedo * AmbientIntensity;
+    DirectLighting *= ShadowFactor;
+
+    float3 FinalColor = DirectLighting + Ambient;
 
     float3 DisplayColor = LinearToSRGB(saturate(FinalColor));
 

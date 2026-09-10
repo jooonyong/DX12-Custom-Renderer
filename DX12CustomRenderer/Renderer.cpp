@@ -339,6 +339,15 @@ void Renderer::RenderShadowPass(FrameResource& Frame)
 	{
 		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
 	}
+
+	D3D12_RESOURCE_BARRIER Barrier{};
+	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	Barrier.Transition.pResource = ShadowDepthTexture.Get();
+	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandList->ResourceBarrier(1, &Barrier);
 }
 
 void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
@@ -371,6 +380,7 @@ void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
 
 	CommandList->SetGraphicsRootConstantBufferView(0, Frame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
 	CommandList->SetGraphicsRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b2
+	CommandList->SetGraphicsRootConstantBufferView(6, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress()); //b3
 
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -399,11 +409,22 @@ void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
 
 		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
 	}
-
+	CommandList->SetGraphicsRootDescriptorTable(7, ShadowSRV.GPU); //t3
+	
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 
 	CommandList->ResourceBarrier(1, &Barrier);
+
+	D3D12_RESOURCE_BARRIER ShadowBarrier{};
+	ShadowBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	ShadowBarrier.Transition.pResource = ShadowDepthTexture.Get();
+	ShadowBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	ShadowBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	ShadowBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandList->ResourceBarrier(1, &ShadowBarrier);
+
 }
 
 void Renderer::RenderFrame(const Camera& MainCamera)
@@ -419,7 +440,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
 
 	//ConstantBuffer Data세팅
-	Angle += 0.001f;
+	//Angle += 0.001f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
@@ -483,7 +504,14 @@ bool Renderer::CreateMainRootSignature()
 	NormalMapRange.BaseShaderRegister = 2; //t2
 	NormalMapRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[6]{};
+	D3D12_DESCRIPTOR_RANGE ShadowMapRange{};
+	ShadowMapRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	ShadowMapRange.RegisterSpace = 0;
+	ShadowMapRange.NumDescriptors = 1;
+	ShadowMapRange.BaseShaderRegister = 3; //t3
+	ShadowMapRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[8]{};
 	//Transform ConstantBuffer
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
@@ -520,27 +548,55 @@ bool Renderer::CreateMainRootSignature()
 	RootParameters[5].DescriptorTable.pDescriptorRanges = &NormalMapRange;
 	RootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
-	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	SamplerDesc.MipLODBias = 0.0f;
-	SamplerDesc.MaxAnisotropy = 1;
-	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
-	SamplerDesc.MinLOD = 0.0f;
-	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	SamplerDesc.ShaderRegister = 0; ///s0
-	SamplerDesc.RegisterSpace = 0;
-	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	//DirectionalLight view matrix ConstantBuffer;
+	RootParameters[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[6].Descriptor.ShaderRegister = 3; // b3
+	RootParameters[6].Descriptor.RegisterSpace = 0;
+	RootParameters[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+	//ShadowMap Texture
+	RootParameters[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[7].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[7].DescriptorTable.pDescriptorRanges = &ShadowMapRange;
+	RootParameters[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc[2]{};
+	//MainPass Sampler
+	SamplerDesc[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc[0].MipLODBias = 0.0f;
+	SamplerDesc[0].MaxAnisotropy = 1;
+	SamplerDesc[0].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc[0].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	SamplerDesc[0].MinLOD = 0.0f;
+	SamplerDesc[0].MaxLOD = D3D12_FLOAT32_MAX;
+	SamplerDesc[0].ShaderRegister = 0; ///s0
+	SamplerDesc[0].RegisterSpace = 0;
+	SamplerDesc[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	//ShadowMap용 Sampler
+	SamplerDesc[1].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	SamplerDesc[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	SamplerDesc[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	SamplerDesc[0].MipLODBias = 0.0f;
+	SamplerDesc[0].MaxAnisotropy = 1;
+	SamplerDesc[1].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc[1].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;  //sampling범위밖을 depth = 1로 설정해서 범위 밖은 그림자가 안생기게함
+	SamplerDesc[1].MinLOD = 0.0f;	
+	SamplerDesc[1].MaxLOD = D3D12_FLOAT32_MAX;	
+	SamplerDesc[1].ShaderRegister = 1; //s1
+	SamplerDesc[1].RegisterSpace = 0;
+	SamplerDesc[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc;
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 6;
-	RootDesc.NumStaticSamplers = 1;
+	RootDesc.NumParameters = 8;
+	RootDesc.NumStaticSamplers = 2;
 	RootDesc.pParameters = RootParameters;
-	RootDesc.pStaticSamplers = &SamplerDesc;
+	RootDesc.pStaticSamplers = SamplerDesc;
 
 	ID3DBlob* SerializedRootSignature;
 	ID3DBlob* ErrorBlob;
@@ -939,7 +995,8 @@ bool Renderer::CreateShadowMap()
 	ShadowDSV = ShadowDSVHeap->GetCPUDescriptorHandleForHeapStart();
 	Device.GetDevice()->CreateDepthStencilView(ShadowDepthTexture.Get(), &DSVDesc, ShadowDSV);
 
-	//SRVDescriptorAllocator.Allocate();
+	ShadowSRV = SRVDescriptorAllocator.Allocate();
+	
 	return true;
 }
 

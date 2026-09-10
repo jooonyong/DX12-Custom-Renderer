@@ -53,7 +53,7 @@ struct TransformConstant
 
 struct DirectionalLightConstant
 {
-	DirectX::XMFLOAT3 Direction = { 0.0f, -1.0f, 1.0f };
+	DirectX::XMFLOAT3 Direction = { 1.0f, -0.5f, 1.0f };
 	float Intensity = 1.0f;
 	DirectX::XMFLOAT3 Color{ 1.0f,1.0f,1.0f };
 	float AmbientIntensity = 0.1f;
