@@ -322,6 +322,7 @@ void Renderer::RenderShadowPass(FrameResource& Frame)
 
 	//RenderTarget를 사용하지 않고 DepthBuffer만 사용하기 때문에 RenderTarget은 nullptr로 설정
 	CommandList->OMSetRenderTargets(0, nullptr, FALSE, &ShadowDSV);
+	CommandList->ClearDepthStencilView(ShadowDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -419,7 +420,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 
 	//ConstantBuffer Data세팅
 	Angle += 0.001f;
-	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
+	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
 	DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr, World);
@@ -628,6 +629,7 @@ bool Renderer::CreateShadowPipelineState()
 	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 	PipelineStateDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 	PipelineStateDesc.RasterizerState.MultisampleEnable = false;
+	PipelineStateDesc.RasterizerState.DepthClipEnable = TRUE;
 	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	PipelineStateDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
 	PipelineStateDesc.BlendState.RenderTarget[0].LogicOpEnable = FALSE;
@@ -638,8 +640,7 @@ bool Renderer::CreateShadowPipelineState()
 	PipelineStateDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 	PipelineStateDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	PipelineStateDesc.NumRenderTargets = 1;
+	PipelineStateDesc.NumRenderTargets = 0;
 	PipelineStateDesc.SampleDesc.Count = 1;
 	PipelineStateDesc.SampleDesc.Quality = 0;
 	PipelineStateDesc.SampleMask = UINT_MAX;
@@ -914,6 +915,8 @@ bool Renderer::CreateShadowMap()
 	{
 		return false;
 	}
+	//프로파일용 텍스쳐 이름 설정
+	ShadowDepthTexture->SetName(L"ShadowDepthTexture");	
 
 	D3D12_DESCRIPTOR_HEAP_DESC DSVHeapDesc{};
 	DSVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
