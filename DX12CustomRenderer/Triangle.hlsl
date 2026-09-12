@@ -107,19 +107,59 @@ float3 LinearToSRGB(float3 Color)
     return lerp(Low, High, step(0.0031308f, Color));
 }
 
+float CalculateShadowFactor(VSOutput Input)
+{
+    //Shadow 계산
+    float3 ShadowNDC = Input.ShadowPosition.xyz / Input.ShadowPosition.w;
+    float2 ShadowUV;
+    ShadowUV.x = ShadowNDC.x * 0.5f + 0.5f;
+	ShadowUV.y = -ShadowNDC.y * 0.5f + 0.5f; //y축과 v축이 반대이므로 -1을 곱해줌
+
+    float CurrentDepth = ShadowNDC.z;
+    
+    uint Width;
+    uint Height;   
+    ShadowMapTexture.GetDimensions(Width, Height);
+
+    float2 TexelSize = 1.0f / float2(Width, Height);
+    
+    float ShadowBias = 0.001f;
+    float LitCount = 0.0f;
+    //3*3 PCF
+    for(int x = -1; x <=1; x++)
+    {
+        for(int y = -1; y<=1; y++)
+        {
+            float2 Offset = float2(x,y) * TexelSize;
+            float StoredDepth = ShadowMapTexture.SampleLevel(ShadowSampler, ShadowUV + Offset, 0).r;
+            if (StoredDepth + ShadowBias < CurrentDepth)
+            {
+                //LitCount += 0.0f; //Shadow
+            }
+            else
+            {
+                LitCount += 1.0f; //No Shadow
+            }
+        }
+    }
+
+    return LitCount / 9.0f;
+}
+
 VSOutput VSMain(VSInput Input)
 {
     VSOutput Output;
     
+    float3 WorldPosition = mul(float4(Input.Position, 1.0f), World).xyz;
+    Output.WorldPosition = WorldPosition.xyz;
+    
     float3 WorldNormal = mul(float4(Input.Normal, 0.0f), WorldInverseTranspose).xyz;
     float3 T = mul(float4(Input.Tangent.xyz, 0.0f), World).xyz;
-
-    Output.Position = mul(float4(Input.Position, 1.0f), World);  
-    Output.Position = mul(Output.Position, View);
+  
+    Output.Position = mul(float4(WorldPosition, 1.0f), View);
     Output.Position = mul(Output.Position, Projection);
 
-    Output.WorldPosition = mul(float4(Input.Position, 1.0f), World).xyz;
-    Output.ShadowPosition = mul(Output.WorldPosition, LightViewProjection);
+    Output.ShadowPosition = mul(float4(WorldPosition,1.0f), LightViewProjection);
     
     Output.UV = Input.UV;
     Output.WorldNormal = normalize(WorldNormal);
@@ -146,6 +186,8 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float3 NormalWS = normalize(NormalTS.x * T + NormalTS.y * B + NormalTS.z * N);
     N = NormalWS;
 
+    float ShadowFactor = CalculateShadowFactor(Input);
+    
     //specular
     float3 H = normalize(L + V); //LightDir vector + ViewDir Vector
 
@@ -154,26 +196,6 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     //Specular(Normal과 H가 평행일수록 specular가 강해짐
     float NdotH = max(dot(N, H), 0.0f);
     float NdotV = max(dot(N, V), 0.0f);
-
-    //Shadow 계산
-    float3 ShadowNDC = Input.ShadowPosition.xyz / Input.ShadowPosition.w;
-    float2 ShadowUV;
-    ShadowUV.x = ShadowNDC.x * 0.5f + 0.5f;
-	ShadowUV.y = -ShadowNDC.y * 0.5f + 0.5f; //y축과 v축이 반대이므로 -1을 곱해줌
-
-    float StoredDepth = ShadowMapTexture.SampleLevel(ShadowSampler, ShadowUV, 0).r;
-    float CurrentDepth = Input.ShadowPosition.z / Input.ShadowPosition.w;
-
-    float ShadowBias = 0.001f;
-    float ShadowFactor;
-    if (StoredDepth + ShadowBias < CurrentDepth)
-    {
-        ShadowFactor = 0.0f; //Shadow
-    }
-    else
-    {
-        ShadowFactor = 1.0f; //No Shadow
-    }
 
     float4 TextureColor = AlbedoTexture.Sample(LinearSampler, Input.UV);
     float3 Albedo = TextureColor.rgb * BaseColor.rgb;
@@ -207,6 +229,6 @@ float4 PSMain(VSOutput Input) : SV_TARGET
     float3 FinalColor = DirectLighting + Ambient;
 
     float3 DisplayColor = LinearToSRGB(saturate(FinalColor));
-
+    //return float4(ShadowFactor.xxx, 1.0f);
     return float4(DisplayColor, TextureColor.a * BaseColor.a);
 }

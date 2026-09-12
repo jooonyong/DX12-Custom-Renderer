@@ -440,7 +440,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
 
 	//ConstantBuffer Data¼¼ÆÃ
-	//Angle += 0.001f;
+	Angle += 0.001f;
 	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f);
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
