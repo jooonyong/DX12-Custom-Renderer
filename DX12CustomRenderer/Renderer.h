@@ -92,6 +92,7 @@ public:
 
 	bool CreateDepthBuffer();
 	bool CreateShadowMap();
+	bool CreateGBuffers(uint32_t Width, uint32_t Height);
 
 	std::shared_ptr<Texture> CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
@@ -144,6 +145,20 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE ShadowDSV;
 	D3D12DescriptorHandle ShadowSRV;
 	
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> GBufferRTVDescriptorHeap;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferA; //BaseColor
+	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferB; //Normal
+	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferC; //MRTexture
+
+	D3D12_CPU_DESCRIPTOR_HANDLE GBufferARTV;
+	D3D12_CPU_DESCRIPTOR_HANDLE GBufferBRTV;
+	D3D12_CPU_DESCRIPTOR_HANDLE GBufferCRTV;
+
+	D3D12DescriptorHandle GBufferASRV;
+	D3D12DescriptorHandle GBufferBSRV;
+	D3D12DescriptorHandle GBufferCSRV;
+
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;
 

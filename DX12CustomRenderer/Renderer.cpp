@@ -1010,6 +1010,97 @@ bool Renderer::CreateShadowMap()
 	return true;
 }
 
+bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
+{
+	//BaseColor
+	D3D12_RESOURCE_DESC GBufferADesc{};
+	GBufferADesc.Width = Width;
+	GBufferADesc.Height = Height;
+	GBufferADesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	GBufferADesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	GBufferADesc.MipLevels = 1;
+	GBufferADesc.DepthOrArraySize = 1;
+	GBufferADesc.SampleDesc = { 1,0 };
+	GBufferADesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	GBufferADesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+	D3D12_RESOURCE_DESC GBufferBDesc{};
+	GBufferBDesc = GBufferADesc;
+	GBufferBDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+	D3D12_HEAP_PROPERTIES HeapProperties{};
+	HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result1 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferADesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
+		nullptr, IID_PPV_ARGS(&GBufferA));
+	HRESULT Result2 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferBDesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
+		nullptr, IID_PPV_ARGS(&GBufferB));
+	HRESULT Result3 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferADesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
+		nullptr, IID_PPV_ARGS(&GBufferC));
+
+	if (FAILED(Result1) || FAILED(Result2) || FAILED(Result3))
+	{
+		return false;
+	}
+	
+	//RTV Descriptor¿ë DescriptorHeap »ý¼º
+	D3D12_DESCRIPTOR_HEAP_DESC GBufferDescHeapDesc{};
+	GBufferDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	GBufferDescHeapDesc.NumDescriptors = 3;
+	GBufferDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+	HRESULT Result = Device.GetDevice()->CreateDescriptorHeap(&GBufferDescHeapDesc, IID_PPV_ARGS(&GBufferRTVDescriptorHeap));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	D3D12_RENDER_TARGET_VIEW_DESC RTVADesc{};
+	RTVADesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	RTVADesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+	D3D12_RENDER_TARGET_VIEW_DESC RTVBDesc{};
+	RTVBDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RTVBDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	
+	D3D12_RENDER_TARGET_VIEW_DESC RTVCDesc{};
+	RTVCDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	RTVCDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+	UINT RTVDescriptorSize = Device.GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	GBufferARTV.ptr = GBufferRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
+	GBufferBRTV.ptr = GBufferRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + static_cast<SIZE_T>(RTVDescriptorSize);
+	GBufferCRTV.ptr = GBufferRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + static_cast<SIZE_T>(RTVDescriptorSize * 2);
+	
+	Device.GetDevice()->CreateRenderTargetView(GBufferA.Get(), &RTVADesc, GBufferARTV);
+	Device.GetDevice()->CreateRenderTargetView(GBufferB.Get(), &RTVBDesc, GBufferBRTV);
+	Device.GetDevice()->CreateRenderTargetView(GBufferC.Get(), &RTVCDesc, GBufferCRTV);
+
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC GBufferASRVDesc{};
+	GBufferASRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	GBufferASRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	GBufferASRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	GBufferASRVDesc.Texture2D.MostDetailedMip = 0;
+	GBufferASRVDesc.Texture2D.MipLevels = 1;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC GBufferBSRVDesc{};
+	GBufferBSRVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	GBufferBSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	GBufferBSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	GBufferBSRVDesc.Texture2D.MostDetailedMip = 0;
+	GBufferBSRVDesc.Texture2D.MipLevels = 1;
+
+	GBufferASRV = SRVDescriptorAllocator.Allocate();
+	GBufferBSRV = SRVDescriptorAllocator.Allocate();
+	GBufferCSRV = SRVDescriptorAllocator.Allocate();
+
+	Device.GetDevice()->CreateShaderResourceView(GBufferA.Get(), &GBufferASRVDesc, GBufferASRV.CPU);
+	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, GBufferBSRV.CPU);
+	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, GBufferCSRV.CPU);
+
+	return true;
+}
+
 std::shared_ptr<Texture> Renderer::CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace)
 {
 	Microsoft::WRL::ComPtr<ID3D12Resource> TextureResource;
