@@ -177,23 +177,35 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	if (!CreateShadowMap())
+	if (!CreateGBuffers(Width, Height))
 	{
 		return false;
 	}
 
+	if (!CreateShadowMap())
+	{
+		return false;
+	}
+	if (!CreateShaders())
+	{
+		return false;
+	}
 	UpdateShadowViewport(2048, 2048);
 	UpdateViewport(Width, Height);
 
+	if (!CreateGBufferRootSignature())
+	{
+		return false;
+	}
+	if (!CreateGBufferPipelineState())
+	{
+		return false;
+	}
 	if (!CreateShadowRootSignature())
 	{
 		return false;
 	}
 
-	if (!CreateShaders())
-	{
-		return false;
-	}
 
 	if (!CreateShadowPipelineState())
 	{
@@ -310,6 +322,71 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 }
 
+void Renderer::RenderGBufferPass(FrameResource& Frame, UINT FrameIndex)
+{
+	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
+
+	CommandList->SetPipelineState(GBufferPipelineState.Get());
+	CommandList->SetGraphicsRootSignature(GBufferRootSignature.Get());
+
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
+	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
+
+	CommandList->RSSetViewports(1, &Viewport);
+	CommandList->RSSetScissorRects(1, &ScissorRect);
+
+	DSV = DSVHeap->GetCPUDescriptorHandleForHeapStart();
+	CommandList->OMSetRenderTargets(3, &GBufferARTV, TRUE, &DSV);
+
+	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	CommandList->ClearRenderTargetView(GBufferARTV, ClearColor, 0, nullptr);
+	CommandList->ClearRenderTargetView(GBufferBRTV, ClearColor, 0, nullptr);
+	CommandList->ClearRenderTargetView(GBufferCRTV, ClearColor, 0, nullptr);
+
+	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = ModelMesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView = ModelMesh->GetIndexBufferView();
+
+	CommandList->IASetVertexBuffers(0, 1, &VBView);
+	CommandList->IASetIndexBuffer(&IBView);
+
+	CommandList->SetGraphicsRootConstantBufferView(0, Frame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
+	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
+	{
+		std::shared_ptr<Material> Material = DefaultMaterial;
+		if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < ModelMaterials.size())
+		{
+			Material = ModelMaterials[SubMesh.MaterialIndex];
+		}
+		CommandList->SetGraphicsRootDescriptorTable(1, Material->GetAlbedoTexture()->GetSRV().GPU); //t0
+		CommandList->SetGraphicsRootDescriptorTable(3, Material->GetMetallicRoughnessTexture()->GetSRV().GPU); //t1
+		CommandList->SetGraphicsRootDescriptorTable(4, Material->GetNormalTexture()->GetSRV().GPU); //t2
+		CommandList->SetGraphicsRootConstantBufferView(2, Material->GetConstantBufferGPUAddress(FrameIndex)); //b1
+
+		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
+	}
+	
+	D3D12_RESOURCE_BARRIER ResourceBarrier{};
+	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	ResourceBarrier.Transition.pResource = GBufferA.Get();
+	ResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	ResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	ResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandList->ResourceBarrier(1, &ResourceBarrier);
+	ResourceBarrier.Transition.pResource = GBufferB.Get();
+
+	CommandList->ResourceBarrier(1, &ResourceBarrier);
+	ResourceBarrier.Transition.pResource = GBufferC.Get();
+
+	CommandList->ResourceBarrier(1, &ResourceBarrier);
+}
+
 void Renderer::RenderShadowPass(FrameResource& Frame)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
@@ -368,8 +445,7 @@ void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
 	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
 
-	D3D12_CPU_DESCRIPTOR_HANDLE DSV = DSVHeap->GetCPUDescriptorHandleForHeapStart();
-	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0.0f, 0, nullptr);
+	CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	//삼각형 그리기
 	CommandList->SetPipelineState(MainPipelineState.Get());
@@ -425,6 +501,21 @@ void Renderer::RenderMainPass(FrameResource& Frame, const Camera& MainCamera)
 
 	CommandList->ResourceBarrier(1, &ShadowBarrier);
 
+	D3D12_RESOURCE_BARRIER GBufferBarrier{};
+	GBufferBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	GBufferBarrier.Transition.pResource = GBufferA.Get();
+	GBufferBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	GBufferBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	GBufferBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandList->ResourceBarrier(1, &GBufferBarrier);
+	GBufferBarrier.Transition.pResource = GBufferB.Get();
+
+	CommandList->ResourceBarrier(1, &GBufferBarrier);
+	GBufferBarrier.Transition.pResource = GBufferC.Get();
+
+	CommandList->ResourceBarrier(1, &GBufferBarrier);
+
 }
 
 void Renderer::RenderFrame(const Camera& MainCamera)
@@ -466,6 +557,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	}
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 
+	RenderGBufferPass(CurrentFrame, CurrentIndex);
 	RenderShadowPass(CurrentFrame);
 	RenderMainPass(CurrentFrame, MainCamera);
 
@@ -708,8 +800,200 @@ bool Renderer::CreateShadowPipelineState()
 	return true;
 }
 
+bool Renderer::CreateGBufferRootSignature()
+{
+	D3D12_DESCRIPTOR_RANGE SRVRange{};
+	SRVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	SRVRange.RegisterSpace = 0;
+	SRVRange.NumDescriptors = 1;
+	SRVRange.BaseShaderRegister = 0; //t0
+	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_DESCRIPTOR_RANGE MRRange{};
+	MRRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	MRRange.RegisterSpace = 0;
+	MRRange.NumDescriptors = 1;
+	MRRange.BaseShaderRegister = 1; //t1
+	MRRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_DESCRIPTOR_RANGE NormalMapRange{};
+	NormalMapRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	NormalMapRange.RegisterSpace = 0;
+	NormalMapRange.NumDescriptors = 1;
+	NormalMapRange.BaseShaderRegister = 2; //t2
+	NormalMapRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[5]{};
+	//Transform ConstantBuffer
+	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[0].Descriptor.ShaderRegister = 0; // b0
+	RootParameters[0].Descriptor.RegisterSpace = 0;
+	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	//AlbedoTexture DescriptorTable
+	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[1].DescriptorTable.pDescriptorRanges = &SRVRange;
+	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	//Material ConstantBuffer
+	RootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[2].Descriptor.ShaderRegister = 1; // b1
+	RootParameters[2].Descriptor.RegisterSpace = 0;
+	RootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	//MRTexture DescriptorTable
+	RootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[3].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[3].DescriptorTable.pDescriptorRanges = &MRRange;
+	RootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	//NormalMap Texture
+	RootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[4].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[4].DescriptorTable.pDescriptorRanges = &NormalMapRange;
+	RootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
+	//GBuffer Sampler
+	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.MipLODBias = 0.0f;
+	SamplerDesc.MaxAnisotropy = 1;
+	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	SamplerDesc.MinLOD = 0.0f;
+	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	SamplerDesc.ShaderRegister = 0; ///s0
+	SamplerDesc.RegisterSpace = 0;
+	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+
+	D3D12_ROOT_SIGNATURE_DESC RootDesc;
+	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	RootDesc.NumParameters = 5;
+	RootDesc.NumStaticSamplers = 1;
+	RootDesc.pParameters = RootParameters;
+	RootDesc.pStaticSamplers = &SamplerDesc;
+
+	ID3DBlob* SerializedRootSignature;
+	ID3DBlob* ErrorBlob;
+	if (FAILED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SerializedRootSignature, &ErrorBlob)))
+	{
+		if (ErrorBlob)
+		{
+			OutputDebugStringA(static_cast<const char*>(ErrorBlob->GetBufferPointer()));
+		}
+		return false;
+	}
+
+	if (FAILED(Device.GetDevice()->CreateRootSignature(0, SerializedRootSignature->GetBufferPointer(), SerializedRootSignature->GetBufferSize(), IID_PPV_ARGS(&GBufferRootSignature))))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Renderer::CreateGBufferPipelineState()
+{
+	D3D12_SHADER_BYTECODE VS;
+	D3D12_SHADER_BYTECODE PS;
+	VS.pShaderBytecode = GBufferVertexShader->GetBufferPointer();
+	VS.BytecodeLength = GBufferVertexShader->GetBufferSize();
+
+	PS.pShaderBytecode = GBufferPixelShader->GetBufferPointer();
+	PS.BytecodeLength = GBufferPixelShader->GetBufferSize();
+
+	D3D12_INPUT_ELEMENT_DESC InputLayout[] = {
+		{
+			"POSITION",
+			0,
+			DXGI_FORMAT_R32G32B32_FLOAT,
+			0,
+			0,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		},
+		{
+			"COLOR",
+			0,
+			DXGI_FORMAT_R32G32B32A32_FLOAT,
+			0,
+			12,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		},
+		{
+			"TEXCOORD",
+			0,
+			DXGI_FORMAT_R32G32_FLOAT,
+			0,
+			28,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		},
+		{
+			"NORMAL",
+			0,
+			DXGI_FORMAT_R32G32B32_FLOAT,
+			0,
+			36,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		},
+		{
+			"Tangent",
+			0,
+			DXGI_FORMAT_R32G32B32A32_FLOAT,
+			0,
+			48,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			0
+		}
+	};
+	
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC PipelineStateDesc{};
+	PipelineStateDesc.pRootSignature = GBufferRootSignature.Get();
+	PipelineStateDesc.VS = VS;
+	PipelineStateDesc.PS = PS;
+	PipelineStateDesc.InputLayout.NumElements = 5;
+	PipelineStateDesc.InputLayout.pInputElementDescs = InputLayout;
+	PipelineStateDesc.NodeMask = 0;
+	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	PipelineStateDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	PipelineStateDesc.RasterizerState.MultisampleEnable = false;
+	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	PipelineStateDesc.RasterizerState.DepthClipEnable = TRUE;
+	PipelineStateDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].LogicOpEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	PipelineStateDesc.DepthStencilState.DepthEnable = true;
+	PipelineStateDesc.DepthStencilState.StencilEnable = false;
+	PipelineStateDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	PipelineStateDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	PipelineStateDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	PipelineStateDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	PipelineStateDesc.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	PipelineStateDesc.NumRenderTargets = 3;
+	PipelineStateDesc.SampleDesc.Count = 1;
+	PipelineStateDesc.SampleDesc.Quality = 0;
+	PipelineStateDesc.SampleMask = UINT_MAX;
+
+	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&GBufferPipelineState))))
+	{
+		return false;
+	}
+	return true;
+}
+
 bool Renderer::CreateShaders()
 {
+	//MainShader
 	MainVertexShader = CompileShader(L"Triangle.hlsl", L"VSMain", L"vs_6_0");
 	if (!MainVertexShader)
 	{
@@ -729,6 +1013,17 @@ bool Renderer::CreateShaders()
 		return false;
 	}
 
+	//GBufferShader
+	GBufferVertexShader = CompileShader(L"GBufferShader.hlsl", L"VSMain", L"vs_6_0");
+	if (!GBufferVertexShader)
+	{
+		return false;
+	}
+	GBufferPixelShader = CompileShader(L"GBufferShader.hlsl", L"PSMain", L"ps_6_0");
+	if (!GBufferPixelShader)
+	{
+		return false;
+	}
 	return true;
 }
 
@@ -1031,12 +1326,26 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	D3D12_HEAP_PROPERTIES HeapProperties{};
 	HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
 
+	D3D12_CLEAR_VALUE ClearValue{};
+	ClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	ClearValue.Color[0] = 0.0f; // R
+	ClearValue.Color[1] = 0.0f; // G
+	ClearValue.Color[2] = 0.0f; // B
+	ClearValue.Color[3] = 1.0f; // A
+
+	D3D12_CLEAR_VALUE ClearValueNormal{};
+	ClearValueNormal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	ClearValueNormal.Color[0] = 0.0f; // R
+	ClearValueNormal.Color[1] = 0.0f; // G
+	ClearValueNormal.Color[2] = 0.0f; // B
+	ClearValueNormal.Color[3] = 1.0f; // A
+
 	HRESULT Result1 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferADesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
-		nullptr, IID_PPV_ARGS(&GBufferA));
+		&ClearValue, IID_PPV_ARGS(&GBufferA));
 	HRESULT Result2 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferBDesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
-		nullptr, IID_PPV_ARGS(&GBufferB));
+		&ClearValueNormal, IID_PPV_ARGS(&GBufferB));
 	HRESULT Result3 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferADesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
-		nullptr, IID_PPV_ARGS(&GBufferC));
+		&ClearValue, IID_PPV_ARGS(&GBufferC));
 
 	if (FAILED(Result1) || FAILED(Result2) || FAILED(Result3))
 	{

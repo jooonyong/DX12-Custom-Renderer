@@ -151,5 +151,8 @@
     <None Include="ShadowShader.hlsl">
       <Filter>Source\Shaders</Filter>
     </None>
+    <None Include="GBufferShader.hlsl">
+      <Filter>Source\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

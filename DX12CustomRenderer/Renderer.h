@@ -77,6 +77,7 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
+	void RenderGBufferPass(FrameResource& Frame, UINT FrameIndex);
 	void RenderShadowPass(FrameResource& Frame);
 	void RenderMainPass(FrameResource& Frame, const Camera& MainCamera);
 	void RenderFrame(const Camera& MainCamera);
@@ -86,6 +87,9 @@ public:
 
 	bool CreateShadowRootSignature();
 	bool CreateShadowPipelineState();
+
+	bool CreateGBufferRootSignature();
+	bool CreateGBufferPipelineState();
 
 	bool CreateShaders();
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const wchar_t* FilePath, const wchar_t* EntryPoint, const wchar_t* TargetProfile);
@@ -113,14 +117,19 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> MainRootSignature = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> ShadowRootSignature = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GBufferRootSignature = nullptr;
 
 	Microsoft::WRL::ComPtr<IDxcBlob> MainVertexShader;
 	Microsoft::WRL::ComPtr<IDxcBlob> MainPixelShader;
 
 	Microsoft::WRL::ComPtr<IDxcBlob> ShadowVertexShader;
 
+	Microsoft::WRL::ComPtr<IDxcBlob> GBufferVertexShader;
+	Microsoft::WRL::ComPtr<IDxcBlob> GBufferPixelShader;
+
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> MainPipelineState = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> ShadowPipelineState = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GBufferPipelineState = nullptr;
 
 	DirectionalLightConstant DirLgtData{};
 
@@ -139,6 +148,7 @@ private:
 
 	ID3D12Resource* DepthBuffer = nullptr;
 	ID3D12DescriptorHeap* DSVHeap = nullptr;
+	D3D12_CPU_DESCRIPTOR_HANDLE DSV;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowDepthTexture;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> ShadowDSVHeap;
