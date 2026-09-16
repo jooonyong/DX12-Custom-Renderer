@@ -80,6 +80,7 @@ public:
 	void RenderGBufferPass(FrameResource& Frame, UINT FrameIndex);
 	void RenderShadowPass(FrameResource& Frame);
 	void RenderMainPass(FrameResource& Frame, const Camera& MainCamera);
+	void RenderDeferredLightingPass();
 	void RenderFrame(const Camera& MainCamera);
 
 	bool CreateMainRootSignature();
@@ -90,6 +91,9 @@ public:
 
 	bool CreateGBufferRootSignature();
 	bool CreateGBufferPipelineState();
+
+	bool CreateDeferredLightingRootSignature();
+	bool CreateDeferredLightingPipelineState();
 
 	bool CreateShaders();
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const wchar_t* FilePath, const wchar_t* EntryPoint, const wchar_t* TargetProfile);
@@ -118,6 +122,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> MainRootSignature = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> ShadowRootSignature = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> GBufferRootSignature = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> DeferredLightingRootSignature = nullptr;
 
 	Microsoft::WRL::ComPtr<IDxcBlob> MainVertexShader;
 	Microsoft::WRL::ComPtr<IDxcBlob> MainPixelShader;
@@ -127,10 +132,13 @@ private:
 	Microsoft::WRL::ComPtr<IDxcBlob> GBufferVertexShader;
 	Microsoft::WRL::ComPtr<IDxcBlob> GBufferPixelShader;
 
+	Microsoft::WRL::ComPtr<IDxcBlob> DeferredLightingVertexShader;
+	Microsoft::WRL::ComPtr<IDxcBlob> DeferredLightingPixelShader;
+
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> MainPipelineState = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> ShadowPipelineState = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> GBufferPipelineState = nullptr;
-
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> DeferredLightingPipelineState = nullptr;
 	DirectionalLightConstant DirLgtData{};
 
 	D3D12ResourceUploader ResourceUploader{};
