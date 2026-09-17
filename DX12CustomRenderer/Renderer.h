@@ -38,6 +38,9 @@ struct FrameResource
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowObjectConstantBuffer;
 	void* ShadowObjectMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> DeferredPassConstantBuffer;
+	void* DeferredPassMappedData = nullptr;
 };
 
 struct TransformConstant
@@ -47,6 +50,13 @@ struct TransformConstant
 	DirectX::XMFLOAT4X4 ProjectionMatrix;
 	DirectX::XMFLOAT4X4 WorldInverseTranspose;
 
+	DirectX::XMFLOAT3 CameraPosition;
+	float Padding;
+};
+
+struct DeferredPassConstant
+{
+	DirectX::XMFLOAT4X4 InverseViewMatrix;
 	DirectX::XMFLOAT3 CameraPosition;
 	float Padding;
 };
@@ -79,8 +89,7 @@ public:
 
 	void RenderGBufferPass(FrameResource& Frame, UINT FrameIndex);
 	void RenderShadowPass(FrameResource& Frame);
-	void RenderMainPass(FrameResource& Frame, const Camera& MainCamera);
-	void RenderDeferredLightingPass();
+	void RenderDeferredLightingPass(FrameResource& Frame);
 	void RenderFrame(const Camera& MainCamera);
 
 	bool CreateMainRootSignature();
@@ -101,6 +110,8 @@ public:
 	bool CreateDepthBuffer();
 	bool CreateShadowMap();
 	bool CreateGBuffers(uint32_t Width, uint32_t Height);
+
+	bool CreateMappedConstantBuffer(uint64_t DataSize, Microsoft::WRL::ComPtr<ID3D12Resource>& OutResource, void** OutMappedData);
 
 	std::shared_ptr<Texture> CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
@@ -154,9 +165,10 @@ private:
 	std::shared_ptr<Material> DefaultMaterial;
 	std::vector<std::shared_ptr<Material>> ModelMaterials;
 
-	ID3D12Resource* DepthBuffer = nullptr;
-	ID3D12DescriptorHeap* DSVHeap = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> DepthBuffer = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DSVHeap = nullptr;
 	D3D12_CPU_DESCRIPTOR_HANDLE DSV;
+	D3D12DescriptorHandle DepthSRV;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowDepthTexture;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> ShadowDSVHeap;
