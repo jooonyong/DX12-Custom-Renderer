@@ -388,7 +388,10 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	CommandList->OMSetRenderTargets(1, &RTV, FALSE, nullptr);
 
 	CommandList->SetGraphicsRootDescriptorTable(0, GBufferASRV.GPU); //t0(GBufferA), t1(GBufferB), t2, t3(Depth)
-	CommandList->SetGraphicsRootConstantBufferView(1, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress());
+	CommandList->SetGraphicsRootConstantBufferView(1, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0
+	CommandList->SetGraphicsRootConstantBufferView(2, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b1
+	CommandList->SetGraphicsRootConstantBufferView(3, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress()); //b2
+	CommandList->SetGraphicsRootDescriptorTable(4, ShadowSRV.GPU); //t4(ShadowTexture)
 
 	CommandList->DrawInstanced(3, 1, 0, 0);
 
@@ -420,8 +423,10 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	ShadowBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
 	CommandList->ResourceBarrier(1, &ShadowBarrier);
+	
 	DepthResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	DepthResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	
 	CommandList->ResourceBarrier(1, &DepthResourceBarrier);
 }
 
@@ -916,7 +921,14 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	SRVRange.BaseShaderRegister = 0; //t0
 	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParams[2]{};
+	D3D12_DESCRIPTOR_RANGE ShadowRange{};
+	ShadowRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	ShadowRange.RegisterSpace = 0;
+	ShadowRange.NumDescriptors = 1;
+	ShadowRange.BaseShaderRegister = 4; //t4 
+	ShadowRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParams[5]{};
 	RootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParams[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParams[0].DescriptorTable.pDescriptorRanges = &SRVRange;
@@ -927,28 +939,61 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	RootParams[1].Descriptor.ShaderRegister = 0; //b0
 	RootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
+	RootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParams[2].Descriptor.RegisterSpace = 0;
+	RootParams[2].Descriptor.ShaderRegister = 1; //b1
+	RootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	RootParams[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParams[3].Descriptor.RegisterSpace = 0;
+	RootParams[3].Descriptor.ShaderRegister = 2; //b2
+	RootParams[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	RootParams[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParams[4].DescriptorTable.NumDescriptorRanges = 1;
+	RootParams[4].DescriptorTable.pDescriptorRanges = &ShadowRange;
+	RootParams[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC GBufferSamplerDesc{};
 	//GBuffer Sampler
-	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	SamplerDesc.MipLODBias = 0.0f;
-	SamplerDesc.MaxAnisotropy = 1;
-	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
-	SamplerDesc.MinLOD = 0.0f;
-	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	SamplerDesc.ShaderRegister = 0; ///s0
-	SamplerDesc.RegisterSpace = 0;
-	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	GBufferSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	GBufferSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	GBufferSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	GBufferSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	GBufferSamplerDesc.MipLODBias = 0.0f;
+	GBufferSamplerDesc.MaxAnisotropy = 1;
+	GBufferSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	GBufferSamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	GBufferSamplerDesc.MinLOD = 0.0f;
+	GBufferSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	GBufferSamplerDesc.ShaderRegister = 0; ///s0
+	GBufferSamplerDesc.RegisterSpace = 0;
+	GBufferSamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC ShadowSamplerDesc{};
+	//Shadow Sampler
+	ShadowSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	ShadowSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	ShadowSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	ShadowSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	ShadowSamplerDesc.MipLODBias = 0.0f;
+	ShadowSamplerDesc.MaxAnisotropy = 1;
+	ShadowSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	ShadowSamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+	ShadowSamplerDesc.MinLOD = 0.0f;
+	ShadowSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	ShadowSamplerDesc.ShaderRegister = 1; ///s1
+	ShadowSamplerDesc.RegisterSpace = 0;
+	ShadowSamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc[2]{ GBufferSamplerDesc, ShadowSamplerDesc };
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 2;
-	RootDesc.NumStaticSamplers = 1;
+	RootDesc.NumParameters = 5;
+	RootDesc.NumStaticSamplers = 2;
 	RootDesc.pParameters = RootParams;
-	RootDesc.pStaticSamplers = &SamplerDesc;
+	RootDesc.pStaticSamplers = SamplerDesc;
 
 	ID3DBlob* SerializedRootSignature;
 	ID3DBlob* ErrorBlob;
