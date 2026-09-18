@@ -110,6 +110,7 @@ public:
 	bool CreateDepthBuffer();
 	bool CreateShadowMap();
 	bool CreateGBuffers(uint32_t Width, uint32_t Height);
+	bool CreateSceneColor(uint32_t Width, uint32_t Height);
 
 	bool CreateMappedConstantBuffer(uint64_t DataSize, Microsoft::WRL::ComPtr<ID3D12Resource>& OutResource, void** OutMappedData);
 
@@ -188,6 +189,11 @@ private:
 	D3D12DescriptorHandle GBufferASRV;
 	D3D12DescriptorHandle GBufferBSRV;
 	D3D12DescriptorHandle GBufferCSRV;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> SceneColor;
+	D3D12_CPU_DESCRIPTOR_HANDLE SceneColorRTV;
+	D3D12DescriptorHandle SceneColorSRV;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> SceneColorRTVHeap;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;

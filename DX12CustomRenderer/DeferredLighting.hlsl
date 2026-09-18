@@ -218,6 +218,6 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
     float3 FinalColor = DirectLighting + Ambient;
     FinalColor = LinearToSRGB(FinalColor);
 
-    return float4(ShadowFactor, ShadowFactor, ShadowFactor, 1.0f);
-    //return float4(FinalColor, 1.0f);
+    //return float4(ShadowFactor, ShadowFactor, ShadowFactor, 1.0f);
+    return float4(FinalColor, 1.0f);
 }

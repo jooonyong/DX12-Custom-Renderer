@@ -34,6 +34,11 @@ Renderer::~Renderer()
 			Frame[i].ShadowPassConstantBuffer->Unmap(0, nullptr);
 			Frame[i].ShadowPassMappedData = nullptr;
 		}
+		if (Frame[i].DeferredPassConstantBuffer)
+		{
+			Frame[i].DeferredPassConstantBuffer->Unmap(0, nullptr);
+			Frame[i].DeferredPassMappedData = nullptr;
+		}
 	}
 	if (DepthBuffer)
 	{
@@ -102,6 +107,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 	if (!CreateShadowMap())
+	{
+		return false;
+	}
+	if (!CreateSceneColor(Width, Height))
 	{
 		return false;
 	}
@@ -363,8 +372,6 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
 
-	//CommandList->ClearDepthStencilView(DSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
 	D3D12_RESOURCE_BARRIER DepthResourceBarrier{};
 	DepthResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	DepthResourceBarrier.Transition.pResource = DepthBuffer.Get();
@@ -385,7 +392,7 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
-	CommandList->OMSetRenderTargets(1, &RTV, FALSE, nullptr);
+	CommandList->OMSetRenderTargets(1, &SceneColorRTV, FALSE, nullptr);
 
 	CommandList->SetGraphicsRootDescriptorTable(0, GBufferASRV.GPU); //t0(GBufferA), t1(GBufferB), t2, t3(Depth)
 	CommandList->SetGraphicsRootConstantBufferView(1, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0
@@ -428,6 +435,14 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	DepthResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 	
 	CommandList->ResourceBarrier(1, &DepthResourceBarrier);
+
+	D3D12_RESOURCE_BARRIER SceneColorBarrier{};
+	SceneColorBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	SceneColorBarrier.Transition.pResource = SceneColor.Get();
+	SceneColorBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	SceneColorBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	SceneColorBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
 }
 
 void Renderer::RenderFrame(const Camera& MainCamera)
@@ -1043,7 +1058,7 @@ bool Renderer::CreateDeferredLightingPipelineState()
 	PipelineStateDesc.DepthStencilState.StencilEnable = false;
 	PipelineStateDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
 	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	PipelineStateDesc.NumRenderTargets = 1;
 	PipelineStateDesc.SampleDesc.Count = 1;
 	PipelineStateDesc.SampleDesc.Quality = 0;
@@ -1496,6 +1511,69 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, GBufferBSRV.CPU);
 	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, GBufferCSRV.CPU);
 
+	return true;
+}
+
+bool Renderer::CreateSceneColor(uint32_t Width, uint32_t Height)
+{
+	D3D12_RESOURCE_DESC SceneColorDesc{};
+	SceneColorDesc.Width = Width;
+	SceneColorDesc.Height = Height;
+	SceneColorDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	SceneColorDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	SceneColorDesc.MipLevels = 1;
+	SceneColorDesc.DepthOrArraySize = 1;
+	SceneColorDesc.SampleDesc = { 1,0 };
+	SceneColorDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	SceneColorDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	D3D12_CLEAR_VALUE ClearValue{};
+	ClearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	ClearValue.Color[0] = 0.0f;
+	ClearValue.Color[1] = 0.0f;
+	ClearValue.Color[2] = 0.0f;
+	ClearValue.Color[3] = 1.0f;
+
+	HRESULT Result = Device.GetDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &SceneColorDesc,
+		D3D12_RESOURCE_STATE_RENDER_TARGET, &ClearValue, IID_PPV_ARGS(&SceneColor));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	
+	D3D12_DESCRIPTOR_HEAP_DESC RTVHeapDesc{};
+	RTVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	RTVHeapDesc.NumDescriptors = 1;
+	RTVHeapDesc.NodeMask = 0;
+	RTVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+	Result = Device.GetDevice()->CreateDescriptorHeap(&RTVHeapDesc, IID_PPV_ARGS(&SceneColorRTVHeap));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	SceneColorRTV = SceneColorRTVHeap->GetCPUDescriptorHandleForHeapStart();
+
+	D3D12_RENDER_TARGET_VIEW_DESC RTVDesc{};
+	RTVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RTVDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+	Device.GetDevice()->CreateRenderTargetView(SceneColor.Get(), &RTVDesc, SceneColorRTV);
+
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
+	SRVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	SRVDesc.Texture2D.MipLevels = 1;
+	SRVDesc.Texture2D.MostDetailedMip = 0;
+	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+
+	SceneColorSRV = SRVDescriptorAllocator.Allocate();
+	Device.GetDevice()->CreateShaderResourceView(SceneColor.Get(), &SRVDesc, SceneColorSRV.CPU);
+	
 	return true;
 }
 
