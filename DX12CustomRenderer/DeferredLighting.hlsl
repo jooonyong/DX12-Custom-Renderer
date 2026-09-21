@@ -86,17 +86,6 @@ float3 FresnelSchlick(float CosTheta, float3 F0)
     return F0 + (1.0f - F0) * pow(1.0f - CosTheta, 5.0f);
 }
 
-
-float3 LinearToSRGB(float3 Color)
-{
-    float3 Low = Color * 12.92f;
-
-    float3 High = 1.055f * pow(max(Color, 0.0f), 1.0f / 2.4f) - 0.055f;
-
-    return lerp(Low, High, step(0.0031308f, Color));
-}
-
-
 float CalculateShadowFactor(float3 WorldPosition)
 {
     //Shadow °è»ê
@@ -216,8 +205,6 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
     float3 Ambient = Albedo * AmbientIntensity;
 
     float3 FinalColor = DirectLighting + Ambient;
-    FinalColor = LinearToSRGB(FinalColor);
 
-    //return float4(ShadowFactor, ShadowFactor, ShadowFactor, 1.0f);
     return float4(FinalColor, 1.0f);
 }

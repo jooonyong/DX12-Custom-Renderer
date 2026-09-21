@@ -143,7 +143,15 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	if (!CreateMainRootSignature())
+	if (!CreateToneMappingRootSignature())
+	{
+		return false;
+	}
+	if (!CreateToneMappingPipelineState())
+	{
+		return false;
+	}
+	/*if (!CreateMainRootSignature())
 	{
 		return false;
 	}
@@ -151,7 +159,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	if (!CreateMainPipelineState())
 	{
 		return false;
-	}
+	}*/
 	if (!ResourceUploader.Begin())
 	{
 		return false;
@@ -360,18 +368,6 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
 
-	D3D12_RESOURCE_BARRIER Barrier{};
-	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	Barrier.Transition.pResource = CurrentBackBuffer;
-	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &Barrier);
-
-	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
-	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
-
 	D3D12_RESOURCE_BARRIER DepthResourceBarrier{};
 	DepthResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	DepthResourceBarrier.Transition.pResource = DepthBuffer.Get();
@@ -391,7 +387,6 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
-	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
 	CommandList->OMSetRenderTargets(1, &SceneColorRTV, FALSE, nullptr);
 
 	CommandList->SetGraphicsRootDescriptorTable(0, GBufferASRV.GPU); //t0(GBufferA), t1(GBufferB), t2, t3(Depth)
@@ -417,11 +412,6 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 
 	CommandList->ResourceBarrier(1, &GBufferBarrier);
 
-	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-
-	CommandList->ResourceBarrier(1, &Barrier);
-
 	D3D12_RESOURCE_BARRIER ShadowBarrier{};
 	ShadowBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	ShadowBarrier.Transition.pResource = ShadowDepthTexture.Get();
@@ -443,6 +433,57 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	SceneColorBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	SceneColorBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
+	CommandList->ResourceBarrier(1, &SceneColorBarrier);
+}
+
+void Renderer::RenderToneMapping(FrameResource& Frame)
+{
+	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
+	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
+	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
+
+	D3D12_RESOURCE_BARRIER Barrier{};
+	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	Barrier.Transition.pResource = CurrentBackBuffer;
+	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandList->ResourceBarrier(1, &Barrier);
+
+	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
+	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
+
+	CommandList->SetPipelineState(ToneMappingPipelineState.Get());
+	CommandList->SetGraphicsRootSignature(ToneMappingRootSignature.Get());
+
+	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	CommandList->RSSetViewports(1, &Viewport);
+	CommandList->RSSetScissorRects(1, &ScissorRect);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE RTV = SwapChain.GetCurrentRTV();
+	CommandList->OMSetRenderTargets(1, &RTV, false, nullptr);
+
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap()};
+
+	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
+
+	CommandList->SetGraphicsRootDescriptorTable(0, SceneColorSRV.GPU);
+	CommandList->DrawInstanced(3, 1, 0, 0);
+
+	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+
+	CommandList->ResourceBarrier(1, &Barrier);
+
+	D3D12_RESOURCE_BARRIER SceneColorBarrier{};
+	SceneColorBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	SceneColorBarrier.Transition.pResource = SceneColor.Get();
+	SceneColorBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	SceneColorBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	SceneColorBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	
+	CommandList->ResourceBarrier(1, &SceneColorBarrier);
 }
 
 void Renderer::RenderFrame(const Camera& MainCamera)
@@ -495,6 +536,7 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 	RenderGBufferPass(CurrentFrame, CurrentIndex);
 	RenderShadowPass(CurrentFrame);
 	RenderDeferredLightingPass(CurrentFrame);
+	RenderToneMapping(CurrentFrame);
 	//RenderMainPass(CurrentFrame, MainCamera);
 
 	CommandContext.Close();
@@ -1071,6 +1113,104 @@ bool Renderer::CreateDeferredLightingPipelineState()
 	return true;
 }
 
+bool Renderer::CreateToneMappingRootSignature()
+{
+	D3D12_DESCRIPTOR_RANGE SRVRange{};
+	SRVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	SRVRange.RegisterSpace = 0;
+	SRVRange.NumDescriptors = 1;
+	SRVRange.BaseShaderRegister = 0; //t0
+	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParam{};
+	RootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam.DescriptorTable.NumDescriptorRanges = 1;
+	RootParam.DescriptorTable.pDescriptorRanges = &SRVRange;
+	RootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
+	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	SamplerDesc.MipLODBias = 0.0f;
+	SamplerDesc.MaxAnisotropy = 1;
+	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	SamplerDesc.MinLOD = 0.0f;
+	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	SamplerDesc.ShaderRegister = 0; ///s0
+	SamplerDesc.RegisterSpace = 0;
+	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
+	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	RootDesc.NumParameters = 1;
+	RootDesc.NumStaticSamplers = 1;
+	RootDesc.pParameters = &RootParam;
+	RootDesc.pStaticSamplers = &SamplerDesc;
+
+	ID3DBlob* SerializedRootSignature;
+	ID3DBlob* ErrorBlob;
+	if (FAILED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SerializedRootSignature, &ErrorBlob)))
+	{
+		if (ErrorBlob)
+		{
+			OutputDebugStringA(static_cast<const char*>(ErrorBlob->GetBufferPointer()));
+		}
+		return false;
+	}
+
+	if (FAILED(Device.GetDevice()->CreateRootSignature(0, SerializedRootSignature->GetBufferPointer(), SerializedRootSignature->GetBufferSize(), IID_PPV_ARGS(&ToneMappingRootSignature))))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Renderer::CreateToneMappingPipelineState()
+{
+	D3D12_SHADER_BYTECODE VS;
+	D3D12_SHADER_BYTECODE PS;
+	VS.pShaderBytecode = ToneMappingVertexShader->GetBufferPointer();
+	VS.BytecodeLength = ToneMappingVertexShader->GetBufferSize();
+
+	PS.pShaderBytecode = ToneMappingPixelShader->GetBufferPointer();
+	PS.BytecodeLength = ToneMappingPixelShader->GetBufferSize();
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC PipelineStateDesc{};
+	PipelineStateDesc.pRootSignature = ToneMappingRootSignature.Get();
+	PipelineStateDesc.VS = VS;
+	PipelineStateDesc.PS = PS;
+	PipelineStateDesc.InputLayout.NumElements = 0;
+	PipelineStateDesc.InputLayout.pInputElementDescs = nullptr;
+	PipelineStateDesc.NodeMask = 0;
+	PipelineStateDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	PipelineStateDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	PipelineStateDesc.RasterizerState.MultisampleEnable = false;
+	PipelineStateDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	PipelineStateDesc.RasterizerState.DepthClipEnable = TRUE;
+	PipelineStateDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].LogicOpEnable = FALSE;
+	PipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	PipelineStateDesc.DepthStencilState.DepthEnable = false;
+	PipelineStateDesc.DepthStencilState.StencilEnable = false;
+	PipelineStateDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+	PipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	PipelineStateDesc.NumRenderTargets = 1;
+	PipelineStateDesc.SampleDesc.Count = 1;
+	PipelineStateDesc.SampleDesc.Quality = 0;
+	PipelineStateDesc.SampleMask = UINT_MAX;
+
+	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&ToneMappingPipelineState))))
+	{
+		return false;
+	}
+	return true;
+}
+
 bool Renderer::CreateShaders()
 {
 	//MainShader
@@ -1115,6 +1255,17 @@ bool Renderer::CreateShaders()
 	{
 		return false;
 	}
+	ToneMappingVertexShader = CompileShader(L"ToneMapping.hlsl", L"VSMain", L"vs_6_0");
+	if (!ToneMappingVertexShader)
+	{
+		return false;
+	}
+	ToneMappingPixelShader = CompileShader(L"ToneMapping.hlsl", L"PSMain", L"ps_6_0");
+	if (!ToneMappingPixelShader)
+	{
+		return false;
+	}
+
 	return true;
 }
 
