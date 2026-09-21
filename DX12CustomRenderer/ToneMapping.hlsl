@@ -1,6 +1,11 @@
 Texture2D SceneColorTexture : register(t0);
 SamplerState PointSampler : register(s0);
 
+cbuffer ToneMappingConstants : register(b0)
+{
+    float Exposure;
+}
+
 struct VSOutput
 {
     float4 Position : SV_POSITION;
@@ -54,7 +59,6 @@ VSOutput VSMain(uint VertexID : SV_VertexID)
 float4 PSMain(VSOutput Input) : SV_TARGET0
 {
     float4 Color = SceneColorTexture.Sample(PointSampler, Input.UV);
-    float Exposure = 1.0f;
     Color *= Exposure;
     
     Color.rgb = ACESFilm(Color.rgb);

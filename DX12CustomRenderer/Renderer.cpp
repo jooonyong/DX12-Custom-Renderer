@@ -468,7 +468,9 @@ void Renderer::RenderToneMapping(FrameResource& Frame)
 
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 
+	Exposure = 0.75f;
 	CommandList->SetGraphicsRootDescriptorTable(0, SceneColorSRV.GPU);
+	CommandList->SetGraphicsRoot32BitConstants(1, 1, &Exposure, 0);
 	CommandList->DrawInstanced(3, 1, 0, 0);
 
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -1122,11 +1124,17 @@ bool Renderer::CreateToneMappingRootSignature()
 	SRVRange.BaseShaderRegister = 0; //t0
 	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParam{};
-	RootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	RootParam.DescriptorTable.NumDescriptorRanges = 1;
-	RootParam.DescriptorTable.pDescriptorRanges = &SRVRange;
-	RootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	D3D12_ROOT_PARAMETER RootParam[2]{};
+	RootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[0].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[0].DescriptorTable.pDescriptorRanges = &SRVRange;
+	RootParam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	RootParam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	RootParam[1].Constants.RegisterSpace = 0;
+	RootParam[1].Constants.ShaderRegister = 0;
+	RootParam[1].Constants.Num32BitValues = 1;
+	RootParam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -1145,9 +1153,9 @@ bool Renderer::CreateToneMappingRootSignature()
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 1;
+	RootDesc.NumParameters = 2;
 	RootDesc.NumStaticSamplers = 1;
-	RootDesc.pParameters = &RootParam;
+	RootDesc.pParameters = RootParam;
 	RootDesc.pStaticSamplers = &SamplerDesc;
 
 	ID3DBlob* SerializedRootSignature;

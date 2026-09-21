@@ -66,7 +66,7 @@ struct DirectionalLightConstant
 	DirectX::XMFLOAT3 Direction = { 1.0f, -0.5f, 1.0f };
 	float Intensity = 1.0f;
 	DirectX::XMFLOAT3 Color{ 1.0f,1.0f,1.0f };
-	float AmbientIntensity = 0.1f;
+	float AmbientIntensity = 0.5f;
 };
 
 struct ShadowObjectConstant
@@ -205,6 +205,7 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE SceneColorRTV;
 	D3D12DescriptorHandle SceneColorSRV;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> SceneColorRTVHeap;
+	float Exposure = 1.0f;
 
 	D3D12_VIEWPORT Viewport;
 	D3D12_RECT ScissorRect;
