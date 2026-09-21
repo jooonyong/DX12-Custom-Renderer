@@ -1,6 +1,7 @@
 #pragma once
 #include "WindowsWindow.h"
 #include "D3D12Device.h"
+#include "Scene.h"
 #include "Renderer.h"
 #include "Camera.h"
 
@@ -21,6 +22,7 @@ private:
 private:
 	bool bRunning = false;
 	WindowsWindow Wnd;
+	Scene MainScene;
 	Renderer Renderer;
 	Camera MainCamera;
 

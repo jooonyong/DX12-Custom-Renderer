@@ -141,6 +141,7 @@
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="Scene.cpp" />
     <ClCompile Include="Texture.cpp" />
     <ClCompile Include="WindowsWindow.cpp" />
   </ItemGroup>
@@ -155,6 +156,7 @@
     <ClInclude Include="D3D12SwapChain.h" />
     <ClInclude Include="GeometryGenerator.h" />
     <ClInclude Include="GLTFLoader.h" />
+    <ClInclude Include="Scene.h" />
     <ClInclude Include="ImageData.h" />
     <ClInclude Include="ImageLoader.h" />
     <ClInclude Include="Material.h" />
@@ -162,6 +164,8 @@
     <ClInclude Include="MeshData.h" />
     <ClInclude Include="ModelData.h" />
     <ClInclude Include="Renderer.h" />
+    <ClInclude Include="RenderModel.h" />
+    <ClInclude Include="RenderObject.h" />
     <ClInclude Include="Texture.h" />
     <ClInclude Include="WindowsWindow.h" />
   </ItemGroup>

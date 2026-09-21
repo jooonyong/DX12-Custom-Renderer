@@ -151,15 +151,6 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-	/*if (!CreateMainRootSignature())
-	{
-		return false;
-	}
-
-	if (!CreateMainPipelineState())
-	{
-		return false;
-	}*/
 	if (!ResourceUploader.Begin())
 	{
 		return false;
@@ -187,67 +178,12 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
-	if (!ModelLoader.Load("Assets/AK/ak12.gltf", LoadedModel))
-	{
-		return false;
-	}
-	ModelMesh = CreateMesh(LoadedModel.Mesh);
-	if (!ModelMesh)
-	{
-		return false;
-	}
-
 	DirectX::XMFLOAT4 BaseColor = { 1.0f,1.0f,1.0f,1.0f };
 	DefaultMaterial = std::make_shared<Material>(DefaultWhiteTexture, DefaultWhiteTexture, DefaultNormalTexture, BaseColor, 0.3f, 0.0f);
 	if (DefaultMaterial)
 	{
 		DefaultMaterial->InitializeGPU(Device.GetDevice(), BufferCount);
 	}
-
-	ModelMaterials.reserve(LoadedModel.Materials.size());
-	for (const MaterialData& MaterialData : LoadedModel.Materials)
-	{
-		std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
-		std::shared_ptr<Texture> MRTexture = DefaultWhiteTexture;
-		std::shared_ptr<Texture> NormalTexture = DefaultNormalTexture;
-
-		if (MaterialData.BaseColorImage.has_value())
-		{
-			ModelTexture = CreateTexture(MaterialData.BaseColorImage.value(), TextureColorSpace::SRGB);
-			if (!ModelTexture)
-			{
-				return false;
-			}
-		}
-		if (MaterialData.MetallicRoughnessImage.has_value())
-		{
-			MRTexture = CreateTexture(MaterialData.MetallicRoughnessImage.value(), TextureColorSpace::Linear);
-			if (!MRTexture)
-			{
-				return false;
-			}
-		}
-		if (MaterialData.NormalMapImage.has_value())
-		{
-			NormalTexture = CreateTexture(MaterialData.NormalMapImage.value(), TextureColorSpace::Linear);
-			if (!NormalTexture)
-			{
-				return false;
-			}
-		}
-		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MRTexture, NormalTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
-		if (!ModelMaterial)
-		{
-			return false;
-		}
-		if (!ModelMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
-		{
-			return false;
-		}
-
-		ModelMaterials.push_back(ModelMaterial);
-	}
-
 	if (!ResourceUploader.End())
 	{
 		return false;
@@ -257,7 +193,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 }
 
-void Renderer::RenderGBufferPass(FrameResource& Frame, UINT FrameIndex)
+void Renderer::RenderGBufferPass(const RenderObject& Object, FrameResource& Frame, UINT FrameIndex)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
@@ -284,19 +220,19 @@ void Renderer::RenderGBufferPass(FrameResource& Frame, UINT FrameIndex)
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	const D3D12_VERTEX_BUFFER_VIEW& VBView = ModelMesh->GetVertexBufferView();
-	const D3D12_INDEX_BUFFER_VIEW& IBView = ModelMesh->GetIndexBufferView();
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = Object.Model->Mesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView = Object.Model->Mesh->GetIndexBufferView();
 
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
 
 	CommandList->SetGraphicsRootConstantBufferView(0, Frame.TransformConstantBuffer->GetGPUVirtualAddress()); //b0
-	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
+	for (const SubMeshData& SubMesh : Object.Model->SubMeshes)
 	{
 		std::shared_ptr<Material> Material = DefaultMaterial;
-		if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < ModelMaterials.size())
+		if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < Object.Model->Materials.size())
 		{
-			Material = ModelMaterials[SubMesh.MaterialIndex];
+			Material = Object.Model->Materials[SubMesh.MaterialIndex];
 		}
 		CommandList->SetGraphicsRootDescriptorTable(1, Material->GetAlbedoTexture()->GetSRV().GPU); //t0
 		CommandList->SetGraphicsRootDescriptorTable(3, Material->GetMetallicRoughnessTexture()->GetSRV().GPU); //t1
@@ -322,7 +258,7 @@ void Renderer::RenderGBufferPass(FrameResource& Frame, UINT FrameIndex)
 	CommandList->ResourceBarrier(1, &ResourceBarrier);
 }
 
-void Renderer::RenderShadowPass(FrameResource& Frame)
+void Renderer::RenderShadowPass(const RenderObject& Object, FrameResource& Frame)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
@@ -338,8 +274,8 @@ void Renderer::RenderShadowPass(FrameResource& Frame)
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	const D3D12_VERTEX_BUFFER_VIEW& VBView = ModelMesh->GetVertexBufferView();
-	const D3D12_INDEX_BUFFER_VIEW& IBView = ModelMesh->GetIndexBufferView();
+	const D3D12_VERTEX_BUFFER_VIEW& VBView = Object.Model->Mesh->GetVertexBufferView();
+	const D3D12_INDEX_BUFFER_VIEW& IBView = Object.Model->Mesh->GetIndexBufferView();
 
 	CommandList->IASetVertexBuffers(0, 1, &VBView);
 	CommandList->IASetIndexBuffer(&IBView);
@@ -347,7 +283,7 @@ void Renderer::RenderShadowPass(FrameResource& Frame)
 	CommandList->SetGraphicsRootConstantBufferView(0, Frame.ShadowObjectConstantBuffer->GetGPUVirtualAddress());
 	CommandList->SetGraphicsRootConstantBufferView(1, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress());
 
-	for (const SubMeshData& SubMesh : LoadedModel.SubMeshes)
+	for (const SubMeshData& SubMesh : Object.Model->SubMeshes)
 	{
 		CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
 	}
@@ -488,7 +424,7 @@ void Renderer::RenderToneMapping(FrameResource& Frame)
 	CommandList->ResourceBarrier(1, &SceneColorBarrier);
 }
 
-void Renderer::RenderFrame(const Camera& MainCamera)
+void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
 	FrameResource& CurrentFrame = Frame[CurrentIndex];
@@ -500,9 +436,14 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 
 	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
 
+	auto& Objects = MainScene.GetRenderObjects();
+	auto& Object = Objects[0];
+
 	//ConstantBuffer Data¼¼ÆÃ
 	Angle += 0.001f;
-	DirectX::XMMATRIX World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f);
+	DirectX::XMMATRIX World = DirectX::XMLoadFloat4x4(&Object.World);
+	World = DirectX::XMMatrixRotationY(Angle) * DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f);
+
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
 	DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr, World);
@@ -529,18 +470,17 @@ void Renderer::RenderFrame(const Camera& MainCamera)
 
 	memcpy(CurrentFrame.DeferredPassMappedData, &InverseViewData, sizeof(DeferredPassConstant));
 
-	for (auto Material : ModelMaterials)
+	for (auto Material : Object.Model->Materials)
 	{
 		Material->UpdateGPU(CurrentIndex);
 	}
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 
-	RenderGBufferPass(CurrentFrame, CurrentIndex);
-	RenderShadowPass(CurrentFrame);
+	RenderGBufferPass(Object, CurrentFrame, CurrentIndex);
+	RenderShadowPass(Object, CurrentFrame);
 	RenderDeferredLightingPass(CurrentFrame);
 	RenderToneMapping(CurrentFrame);
-	//RenderMainPass(CurrentFrame, MainCamera);
-
+	
 	CommandContext.Close();
 	CommandQueue.Execute(&CommandContext);
 	SwapChain.Present();
@@ -1875,4 +1815,73 @@ void Renderer::UpdateViewport(UINT Width, UINT Height)
 	ScissorRect.top = 0.0f;
 	ScissorRect.right = static_cast<LONG>(Width);
 	ScissorRect.bottom = static_cast<LONG>(Height);
+}
+
+std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const std::string& FilePath)
+{
+	if (!ResourceUploader.Begin())
+	{
+		return nullptr;
+	}
+
+	ModelData LoadedModel{};
+	if (!ModelLoader.Load(FilePath, LoadedModel))
+	{
+		return nullptr;
+	}
+
+	std::shared_ptr<RenderModel> Model = std::make_shared<RenderModel>();
+	Model->Mesh = CreateMesh(LoadedModel.Mesh);
+	Model->SubMeshes = LoadedModel.SubMeshes;
+	Model->Materials.reserve(LoadedModel.Materials.size());
+
+	for (const MaterialData& MaterialData : LoadedModel.Materials)
+	{
+		std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
+		std::shared_ptr<Texture> MRTexture = DefaultWhiteTexture;
+		std::shared_ptr<Texture> NormalTexture = DefaultNormalTexture;
+
+		if (MaterialData.BaseColorImage.has_value())
+		{
+			ModelTexture = CreateTexture(MaterialData.BaseColorImage.value(), TextureColorSpace::SRGB);
+			if (!ModelTexture)
+			{
+				return nullptr;
+			}
+		}
+		if (MaterialData.MetallicRoughnessImage.has_value())
+		{
+			MRTexture = CreateTexture(MaterialData.MetallicRoughnessImage.value(), TextureColorSpace::Linear);
+			if (!MRTexture)
+			{
+				return nullptr;
+			}
+		}
+		if (MaterialData.NormalMapImage.has_value())
+		{
+			NormalTexture = CreateTexture(MaterialData.NormalMapImage.value(), TextureColorSpace::Linear);
+			if (!NormalTexture)
+			{
+				return nullptr;
+			}
+		}
+		auto ModelMaterial = std::make_shared<Material>(ModelTexture, MRTexture, NormalTexture, MaterialData.BaseColor, MaterialData.Roughness, MaterialData.Metallic);
+		if (!ModelMaterial)
+		{
+			return nullptr;
+		}
+		if (!ModelMaterial->InitializeGPU(Device.GetDevice(), BufferCount))
+		{
+			return nullptr;
+		}
+
+		Model->Materials.push_back(ModelMaterial);
+	}
+
+	if (!ResourceUploader.End())
+	{
+		return nullptr;
+	}
+
+	return Model;
 }

@@ -16,6 +16,15 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 	{
 		return false;
 	}
+
+	auto Model = Renderer.CreateRenderModel("Assets/AK/ak12.gltf");
+
+	RenderObject Object;
+	Object.Model = Model;
+	DirectX::XMStoreFloat4x4(&Object.World, DirectX::XMMatrixIdentity());
+
+	MainScene.AddRenderObject(Object);
+
 	bRunning = true;
 	return true;
 }
@@ -37,7 +46,7 @@ void Application::Run()
 		Update(DeltaTime);
 
 		//그리기 관련 RenderCommand
-		Renderer.RenderFrame(MainCamera);
+		Renderer.RenderFrame(MainScene, MainCamera);
 	}
 }
 

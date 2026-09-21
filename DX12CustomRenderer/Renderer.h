@@ -9,6 +9,10 @@
 #include "Texture.h"
 #include "GLTFLoader.h"
 #include "ImageLoader.h"
+#include "RenderModel.h"
+#include "RenderObject.h"
+#include "Scene.h"
+
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
@@ -87,12 +91,12 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
-	void RenderGBufferPass(FrameResource& Frame, UINT FrameIndex);
-	void RenderShadowPass(FrameResource& Frame);
+	void RenderGBufferPass(const RenderObject& Object, FrameResource& Frame, UINT FrameIndex);
+	void RenderShadowPass(const RenderObject& Object, FrameResource& Frame);
 	void RenderDeferredLightingPass(FrameResource& Frame);
 	void RenderToneMapping(FrameResource& Frame);
 
-	void RenderFrame(const Camera& MainCamera);
+	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 
 	bool CreateMainRootSignature();
 	bool CreateMainPipelineState();
@@ -127,6 +131,9 @@ public:
 
 	void UpdateShadowViewport(UINT Width, UINT Height);
 	void UpdateViewport(UINT Width, UINT Height);
+
+	//Application 호출용 임시 함수
+	std::shared_ptr<RenderModel> CreateRenderModel(const std::string& FilePath);
 
 private:
 	D3D12Device Device;
