@@ -93,8 +93,8 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
-	void RenderGBufferPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame, UINT FrameIndex);
-	void RenderShadowPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame);
+	void RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex);
+	void RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame);
 	void RenderDeferredLightingPass(FrameResource& Frame);
 	void RenderToneMapping(FrameResource& Frame);
 

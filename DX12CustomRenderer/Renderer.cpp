@@ -193,7 +193,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	return true;
 }
 
-void Renderer::RenderGBufferPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame, UINT FrameIndex)
+void Renderer::RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
@@ -220,7 +220,7 @@ void Renderer::RenderGBufferPass(std::vector<DrawCommand> DrawCommands, FrameRes
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
-	for (auto Command : DrawCommands)
+	for (auto& Command : DrawCommands)
 	{
 		const D3D12_VERTEX_BUFFER_VIEW& VBView = Command.Mesh->GetVertexBufferView();
 		const D3D12_INDEX_BUFFER_VIEW& IBView = Command.Mesh->GetIndexBufferView();
@@ -257,7 +257,7 @@ void Renderer::RenderGBufferPass(std::vector<DrawCommand> DrawCommands, FrameRes
 	CommandList->ResourceBarrier(1, &ResourceBarrier);
 }
 
-void Renderer::RenderShadowPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame)
+void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
@@ -1896,6 +1896,7 @@ void Renderer::BuildDrawCommand(const Scene& Scene, std::vector<DrawCommand>& Ou
 {
 	auto& Objects = Scene.GetRenderObjects();
 	uint32_t Index = 0;
+	OutCommands.clear();
 
 	for (auto& Object : Objects)
 	{
