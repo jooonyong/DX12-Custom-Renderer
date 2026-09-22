@@ -46,9 +46,6 @@ struct FrameResource
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowPassConstantBuffer;
 	void* ShadowPassMappedData = nullptr;
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowObjectConstantBuffer;
-	uint8_t* ShadowObjectMappedData = nullptr;
-
 	Microsoft::WRL::ComPtr<ID3D12Resource> DeferredPassConstantBuffer;
 	void* DeferredPassMappedData = nullptr;
 };
@@ -80,11 +77,6 @@ struct DirectionalLightConstant
 	float Intensity = 1.0f;
 	DirectX::XMFLOAT3 Color{ 1.0f,1.0f,1.0f };
 	float AmbientIntensity = 0.5f;
-};
-
-struct ShadowObjectConstant
-{
-	DirectX::XMFLOAT4X4 WorldMatrix;
 };
 
 struct ShadowPassConstant
@@ -135,7 +127,6 @@ public:
 	std::shared_ptr<Texture> CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
-	void UpdateShadowObjectConstant(FrameResource& Frame, int Index, const DirectX::XMMATRIX& WorldMatrix);
 	void UpdateShadowPassConstant(FrameResource& Frame);
 
 	void UpdateShadowViewport(UINT Width, UINT Height);
@@ -184,14 +175,11 @@ private:
 	D3D12DescriptorAllocator SRVDescriptorAllocator;
 
 	GLTFLoader ModelLoader;
-	ModelData LoadedModel;
 	ImageLoader TextureImageLoader;
 
 	std::shared_ptr<Texture> DefaultWhiteTexture;
 	std::shared_ptr<Texture> DefaultNormalTexture;
-	std::unique_ptr<Mesh> ModelMesh = nullptr;
 	std::shared_ptr<Material> DefaultMaterial;
-	std::vector<std::shared_ptr<Material>> ModelMaterials;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> DepthBuffer = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DSVHeap = nullptr;

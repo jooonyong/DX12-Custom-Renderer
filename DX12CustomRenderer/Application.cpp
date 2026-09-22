@@ -18,6 +18,10 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 	}
 
 	auto Model = Renderer.CreateRenderModel("Assets/AK/ak12.gltf");
+	if (!Model)
+	{
+		return false;
+	}
 
 	RenderObject Object1;
 	Object1.Model = Model;

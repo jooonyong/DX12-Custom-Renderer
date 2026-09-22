@@ -29,11 +29,6 @@ Renderer::~Renderer()
 			Frame[i].DirLgtConstantBuffer->Unmap(0, nullptr);
 			Frame[i].DirLgtConstantBufferMappedData = nullptr;
 		}
-		if (Frame[i].ShadowObjectConstantBuffer)
-		{
-			Frame[i].ShadowObjectConstantBuffer->Unmap(0, nullptr);
-			Frame[i].ShadowObjectMappedData = nullptr;
-		}
 		if (Frame[i].ShadowPassConstantBuffer)
 		{
 			Frame[i].ShadowPassConstantBuffer->Unmap(0, nullptr);
@@ -72,7 +67,6 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 			return false;
 		}
 		UINT ObjectConstantStride = (sizeof(ObjectConstant) + 255) & ~255;
-		UINT ShadowObjectConstantStride = (sizeof(ShadowObjectConstant) + 255) & ~255;
 		//Object ConstantBuffer용 UploadHeap
 		CreateMappedConstantBuffer(ObjectConstantStride * MaxRenderObjects, Frame[i].ObjectConstantBuffer, reinterpret_cast<void**>(&Frame[i].ObjectConstantBufferMappedData));
 		//SceneConstantBuffer용 UploadHeap생성
@@ -80,7 +74,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		//DirectionalLight ConstantBuffer용 UploadHeap
 		CreateMappedConstantBuffer(sizeof(DirectionalLightConstant), Frame[i].DirLgtConstantBuffer, &Frame[i].DirLgtConstantBufferMappedData);
 		//ShadowObject ConstantBuffer용 UploadHeap
-		CreateMappedConstantBuffer(ShadowObjectConstantStride * MaxRenderObjects, Frame[i].ShadowObjectConstantBuffer, reinterpret_cast<void**>(&Frame[i].ShadowObjectMappedData));
+		//CreateMappedConstantBuffer(ObjectConstantStride * MaxRenderObjects, Frame[i].ObjectConstantBuffer, reinterpret_cast<void**>(&Frame[i].ObjectConstantBufferMappedData));
 		//ShadowPassConstant ConstantBuffer용 UploadHeap
 		CreateMappedConstantBuffer(sizeof(ShadowPassConstant), Frame[i].ShadowPassConstantBuffer, &Frame[i].ShadowPassMappedData);
 		//DeferredLighting ConstantBuffer
@@ -230,7 +224,7 @@ void Renderer::RenderGBufferPass(const Scene& MainScene, FrameResource& Frame, U
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	auto& Objects = MainScene.GetRenderObjects();
-	for (int i = 0; i<Objects.size(); i++)
+	for (int i = 0; i < Objects.size(); i++)
 	{
 		const D3D12_VERTEX_BUFFER_VIEW& VBView = Objects[i].Model->Mesh->GetVertexBufferView();
 		const D3D12_INDEX_BUFFER_VIEW& IBView = Objects[i].Model->Mesh->GetIndexBufferView();
@@ -300,8 +294,8 @@ void Renderer::RenderShadowPass(const Scene& MainScene, FrameResource& Frame)
 		CommandList->IASetVertexBuffers(0, 1, &VBView);
 		CommandList->IASetIndexBuffer(&IBView);
 
-		uint64_t Stride = i * ((sizeof(ShadowObjectConstant) + 255) & ~255);
-		CommandList->SetGraphicsRootConstantBufferView(0, Frame.ShadowObjectConstantBuffer->GetGPUVirtualAddress() + Stride);
+		uint64_t Stride = i * ((sizeof(ObjectConstant) + 255) & ~255);
+		CommandList->SetGraphicsRootConstantBufferView(0, Frame.ObjectConstantBuffer->GetGPUVirtualAddress() + Stride);
 
 		for (const SubMeshData& SubMesh : Objects[i].Model->SubMeshes)
 		{
@@ -458,6 +452,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
 
 	auto& Objects = MainScene.GetRenderObjects();
+	if (Objects.size() > MaxRenderObjects)
+	{
+		return;
+	}
 	for (int i= 0; i<Objects.size();i++)
 	{
 		//ObjectConstantBuffer Data세팅
@@ -468,11 +466,8 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		DirectX::XMStoreFloat4x4(&ObjectConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));
 		DirectX::XMStoreFloat4x4(&ObjectConstantData.WorldInverseTranspose, DirectX::XMMatrixTranspose(WorldInverseTranspose));
 
-		memcpy(CurrentFrame.ObjectConstantBufferMappedData, &ObjectConstantData, sizeof(ObjectConstant));
-		CurrentFrame.ObjectConstantBufferMappedData += ((sizeof(ObjectConstant) + 255) & ~255);
-
-		UpdateShadowObjectConstant(CurrentFrame, i, World);
-	}
+		memcpy(CurrentFrame.ObjectConstantBufferMappedData + i * ((sizeof(ObjectConstant) + 255) & ~255), &ObjectConstantData, sizeof(ObjectConstant));
+}
 	//Angle += 0.001f;
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
@@ -1786,14 +1781,6 @@ std::unique_ptr<Mesh> Renderer::CreateMesh(const MeshData& Data)
 		std::move(LocalIndexBuffer), IndexBufferSize, static_cast<UINT>(Data.Indices.size()));
 }
 
-void Renderer::UpdateShadowObjectConstant(FrameResource& Frame, int Index, const DirectX::XMMATRIX& WorldMatrix)
-{
-	ShadowObjectConstant Data{};
-	DirectX::XMStoreFloat4x4(&Data.WorldMatrix, DirectX::XMMatrixTranspose(WorldMatrix));
-
-	memcpy(Frame.ShadowObjectMappedData, &Data, sizeof(Data));
-	Frame.ShadowObjectMappedData += Index * ((sizeof(ShadowObjectConstant) + 255) & ~255);
-}
 
 void Renderer::UpdateShadowPassConstant(FrameResource& Frame)
 {
