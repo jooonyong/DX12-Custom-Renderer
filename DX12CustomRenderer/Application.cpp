@@ -19,11 +19,16 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 
 	auto Model = Renderer.CreateRenderModel("Assets/AK/ak12.gltf");
 
-	RenderObject Object;
-	Object.Model = Model;
-	DirectX::XMStoreFloat4x4(&Object.World, DirectX::XMMatrixIdentity());
+	RenderObject Object1;
+	Object1.Model = Model;
+	DirectX::XMStoreFloat4x4(&Object1.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(-5.0f, 0.0f, 0.0f));
 
-	MainScene.AddRenderObject(Object);
+	RenderObject Object2;
+	Object2.Model = Model;
+	DirectX::XMStoreFloat4x4(&Object2.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(5.0f, 0.0f, 0.0f));
+
+	MainScene.AddRenderObject(Object1);
+	MainScene.AddRenderObject(Object2);
 
 	bRunning = true;
 	return true;

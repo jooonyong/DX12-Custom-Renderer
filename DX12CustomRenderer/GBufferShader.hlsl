@@ -4,18 +4,20 @@ Texture2D NormalMapTexture : register(t2);
 
 SamplerState LinearSampler : register(s0);
 
-cbuffer TransformBuffer : register(b0)
+cbuffer ObjectBuffer : register(b0)
 {
     float4x4 World;
+    float4x4 WorldInverseTranspose;
+}
+
+cbuffer SceneBuffer : register(b1)
+{
     float4x4 View;
     float4x4 Projection;
-    float4x4 WorldInverseTranspose;
-
     float3 CameraPosition;
     float Padding;
 }
-
-cbuffer MaterialBuffer : register(b1)
+cbuffer MaterialBuffer : register(b2)
 {
     float4 BaseColor;
     float Roughness;

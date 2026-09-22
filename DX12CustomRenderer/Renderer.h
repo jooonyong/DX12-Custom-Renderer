@@ -23,6 +23,8 @@
 //
 //#pragma comment(lib, "windowscodecs.lib")
 
+static constexpr UINT MaxRenderObjects = 1024;
+
 class IDxcBlob;
 class Camera;
 class Material;
@@ -31,8 +33,12 @@ struct FrameResource
 {
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator = nullptr;
 	UINT FenceValue = 0;
-	Microsoft::WRL::ComPtr<ID3D12Resource> TransformConstantBuffer = nullptr;
-	void* TransformConstantBufferMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> ObjectConstantBuffer = nullptr;
+	uint8_t* ObjectConstantBufferMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> SceneConstantBuffer = nullptr;
+	void* SceneConstantBufferMappedData = nullptr;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> DirLgtConstantBuffer = nullptr;
 	void* DirLgtConstantBufferMappedData = nullptr;
@@ -41,23 +47,26 @@ struct FrameResource
 	void* ShadowPassMappedData = nullptr;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowObjectConstantBuffer;
-	void* ShadowObjectMappedData = nullptr;
+	uint8_t* ShadowObjectMappedData = nullptr;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> DeferredPassConstantBuffer;
 	void* DeferredPassMappedData = nullptr;
 };
 
-struct TransformConstant
+struct ObjectConstant
 {
 	DirectX::XMFLOAT4X4 WorldMatrix;
+	DirectX::XMFLOAT4X4 WorldInverseTranspose;
+};
+
+struct SceneConstant
+{
 	DirectX::XMFLOAT4X4 ViewMatrix;
 	DirectX::XMFLOAT4X4 ProjectionMatrix;
-	DirectX::XMFLOAT4X4 WorldInverseTranspose;
 
 	DirectX::XMFLOAT3 CameraPosition;
 	float Padding;
 };
-
 struct DeferredPassConstant
 {
 	DirectX::XMFLOAT4X4 InverseViewMatrix;
@@ -91,8 +100,8 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
-	void RenderGBufferPass(const RenderObject& Object, FrameResource& Frame, UINT FrameIndex);
-	void RenderShadowPass(const RenderObject& Object, FrameResource& Frame);
+	void RenderGBufferPass(const Scene& Scene, FrameResource& Frame, UINT FrameIndex);
+	void RenderShadowPass(const Scene& MainScene, FrameResource& Frame);
 	void RenderDeferredLightingPass(FrameResource& Frame);
 	void RenderToneMapping(FrameResource& Frame);
 
@@ -126,7 +135,7 @@ public:
 	std::shared_ptr<Texture> CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace);
 	std::unique_ptr<Mesh> CreateMesh(const MeshData& Data);
 
-	void UpdateShadowObjectConstant(FrameResource& Frame, const DirectX::XMMATRIX& WorldMatrix);
+	void UpdateShadowObjectConstant(FrameResource& Frame, int Index, const DirectX::XMMATRIX& WorldMatrix);
 	void UpdateShadowPassConstant(FrameResource& Frame);
 
 	void UpdateShadowViewport(UINT Width, UINT Height);
