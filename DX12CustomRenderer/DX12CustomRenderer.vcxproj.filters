@@ -84,6 +84,7 @@
     <ClCompile Include="ImageLoader.cpp">
       <Filter>Source\Asset</Filter>
     </ClCompile>
+    <ClCompile Include="Scene.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -142,6 +143,12 @@
     </ClInclude>
     <ClInclude Include="ImageLoader.h">
       <Filter>Source\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="Scene.h" />
+    <ClInclude Include="RenderModel.h" />
+    <ClInclude Include="RenderObject.h" />
+    <ClInclude Include="DrawCommand.h">
+      <Filter>Source\Renderer</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -154,6 +154,7 @@
     <ClInclude Include="D3D12Device.h" />
     <ClInclude Include="D3D12ResourceUploader.h" />
     <ClInclude Include="D3D12SwapChain.h" />
+    <ClInclude Include="DrawCommand.h" />
     <ClInclude Include="GeometryGenerator.h" />
     <ClInclude Include="GLTFLoader.h" />
     <ClInclude Include="Scene.h" />

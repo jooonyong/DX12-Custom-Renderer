@@ -73,8 +73,6 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		CreateMappedConstantBuffer(sizeof(SceneConstant), Frame[i].SceneConstantBuffer, &Frame[i].SceneConstantBufferMappedData);
 		//DirectionalLight ConstantBuffer용 UploadHeap
 		CreateMappedConstantBuffer(sizeof(DirectionalLightConstant), Frame[i].DirLgtConstantBuffer, &Frame[i].DirLgtConstantBufferMappedData);
-		//ShadowObject ConstantBuffer용 UploadHeap
-		//CreateMappedConstantBuffer(ObjectConstantStride * MaxRenderObjects, Frame[i].ObjectConstantBuffer, reinterpret_cast<void**>(&Frame[i].ObjectConstantBufferMappedData));
 		//ShadowPassConstant ConstantBuffer용 UploadHeap
 		CreateMappedConstantBuffer(sizeof(ShadowPassConstant), Frame[i].ShadowPassConstantBuffer, &Frame[i].ShadowPassMappedData);
 		//DeferredLighting ConstantBuffer
@@ -193,10 +191,9 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 
 	return true;
-
 }
 
-void Renderer::RenderGBufferPass(const Scene& MainScene, FrameResource& Frame, UINT FrameIndex)
+void Renderer::RenderGBufferPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame, UINT FrameIndex)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
@@ -222,36 +219,28 @@ void Renderer::RenderGBufferPass(const Scene& MainScene, FrameResource& Frame, U
 	CommandList->ClearRenderTargetView(GBufferCRTV, ClearColor, 0, nullptr);
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	auto& Objects = MainScene.GetRenderObjects();
-	for (int i = 0; i < Objects.size(); i++)
+	
+	for (auto Command : DrawCommands)
 	{
-		const D3D12_VERTEX_BUFFER_VIEW& VBView = Objects[i].Model->Mesh->GetVertexBufferView();
-		const D3D12_INDEX_BUFFER_VIEW& IBView = Objects[i].Model->Mesh->GetIndexBufferView();
+		const D3D12_VERTEX_BUFFER_VIEW& VBView = Command.Mesh->GetVertexBufferView();
+		const D3D12_INDEX_BUFFER_VIEW& IBView = Command.Mesh->GetIndexBufferView();
 
 		CommandList->IASetVertexBuffers(0, 1, &VBView);
 		CommandList->IASetIndexBuffer(&IBView);
 
-		uint64_t Stride = i * ((sizeof(ObjectConstant) + 255) & ~255);
+		uint64_t Stride = Command.ObjectIndex * ((sizeof(ObjectConstant) + 255) & ~255);
 		CommandList->SetGraphicsRootConstantBufferView(0, Frame.ObjectConstantBuffer->GetGPUVirtualAddress() + Stride); //b0
 		CommandList->SetGraphicsRootConstantBufferView(1, Frame.SceneConstantBuffer->GetGPUVirtualAddress()); //b1
 
-		for (const SubMeshData& SubMesh : Objects[i].Model->SubMeshes)
-		{
-			std::shared_ptr<Material> Material = DefaultMaterial;
-			if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < Objects[i].Model->Materials.size())
-			{
-				Material = Objects[i].Model->Materials[SubMesh.MaterialIndex];
-			}
-			CommandList->SetGraphicsRootDescriptorTable(2, Material->GetAlbedoTexture()->GetSRV().GPU); //t0
-			CommandList->SetGraphicsRootDescriptorTable(4, Material->GetMetallicRoughnessTexture()->GetSRV().GPU); //t1
-			CommandList->SetGraphicsRootDescriptorTable(5, Material->GetNormalTexture()->GetSRV().GPU); //t2
-			CommandList->SetGraphicsRootConstantBufferView(3, Material->GetConstantBufferGPUAddress(FrameIndex)); //b2
+		CommandList->SetGraphicsRootDescriptorTable(2, Command.Material->GetAlbedoTexture()->GetSRV().GPU); //t0
+		CommandList->SetGraphicsRootDescriptorTable(4, Command.Material->GetMetallicRoughnessTexture()->GetSRV().GPU); //t1
+		CommandList->SetGraphicsRootDescriptorTable(5, Command.Material->GetNormalTexture()->GetSRV().GPU); //t2
+		CommandList->SetGraphicsRootConstantBufferView(3, Command.Material->GetConstantBufferGPUAddress(FrameIndex)); //b2
 
-			CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
-		}
+		CommandList->DrawIndexedInstanced(Command.IndexCount, 1, Command.IndexStart, 0, 0);
+
 	}
-
+	
 	D3D12_RESOURCE_BARRIER ResourceBarrier{};
 	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	ResourceBarrier.Transition.pResource = GBufferA.Get();
@@ -268,7 +257,7 @@ void Renderer::RenderGBufferPass(const Scene& MainScene, FrameResource& Frame, U
 	CommandList->ResourceBarrier(1, &ResourceBarrier);
 }
 
-void Renderer::RenderShadowPass(const Scene& MainScene, FrameResource& Frame)
+void Renderer::RenderShadowPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame)
 {
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 
@@ -285,22 +274,17 @@ void Renderer::RenderShadowPass(const Scene& MainScene, FrameResource& Frame)
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	CommandList->SetGraphicsRootConstantBufferView(1, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress());
 
-	auto& Objects = MainScene.GetRenderObjects();
-	for (int i = 0; i < Objects.size(); i++)
+	for (auto& Command : DrawCommands)
 	{
-		const D3D12_VERTEX_BUFFER_VIEW& VBView = Objects[i].Model->Mesh->GetVertexBufferView();
-		const D3D12_INDEX_BUFFER_VIEW& IBView = Objects[i].Model->Mesh->GetIndexBufferView();
+		const D3D12_VERTEX_BUFFER_VIEW& VBView = Command.Mesh->GetVertexBufferView();
+		const D3D12_INDEX_BUFFER_VIEW& IBView = Command.Mesh->GetIndexBufferView();
 
 		CommandList->IASetVertexBuffers(0, 1, &VBView);
 		CommandList->IASetIndexBuffer(&IBView);
 
-		uint64_t Stride = i * ((sizeof(ObjectConstant) + 255) & ~255);
+		uint64_t Stride = Command.ObjectIndex * ((sizeof(ObjectConstant) + 255) & ~255);
 		CommandList->SetGraphicsRootConstantBufferView(0, Frame.ObjectConstantBuffer->GetGPUVirtualAddress() + Stride);
-
-		for (const SubMeshData& SubMesh : Objects[i].Model->SubMeshes)
-		{
-			CommandList->DrawIndexedInstanced(SubMesh.IndexCount, 1, SubMesh.IndexStart, 0, 0);
-		}
+		CommandList->DrawIndexedInstanced(Command.IndexCount, 1, Command.IndexStart, 0, 0);
 	}
 
 	D3D12_RESOURCE_BARRIER Barrier{};
@@ -448,14 +432,17 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	{
 		CommandQueue.WaitForFence(CurrentFrame.FenceValue);
 	}
-
-	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
-
 	auto& Objects = MainScene.GetRenderObjects();
 	if (Objects.size() > MaxRenderObjects)
 	{
 		return;
 	}
+
+	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
+
+	std::vector<DrawCommand> DrawCommands;
+	BuildDrawCommand(MainScene, DrawCommands);
+
 	for (int i= 0; i<Objects.size();i++)
 	{
 		//ObjectConstantBuffer Data세팅
@@ -498,9 +485,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			Material->UpdateGPU(CurrentIndex);
 		}
 	}
-	
-	RenderGBufferPass(MainScene, CurrentFrame, CurrentIndex);
-	RenderShadowPass(MainScene, CurrentFrame);
+		
+	RenderGBufferPass(DrawCommands, CurrentFrame, CurrentIndex);
+	RenderShadowPass(DrawCommands, CurrentFrame);
 	RenderDeferredLightingPass(CurrentFrame);
 	RenderToneMapping(CurrentFrame);
 
@@ -1798,7 +1785,6 @@ void Renderer::UpdateShadowPassConstant(FrameResource& Frame)
 
 	XMMATRIX LightViewProjection = LightViewMatrix * LightProjectionMatrix;
 
-
 	ShadowPassConstant Data{};
 	XMStoreFloat4x4(&Data.LightViewProjectionMatrix, XMMatrixTranspose(LightViewProjection));
 	memcpy(Frame.ShadowPassMappedData, &Data, sizeof(Data));
@@ -1904,4 +1890,30 @@ std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const std::string& File
 	}
 
 	return Model;
+}
+
+void Renderer::BuildDrawCommand(const Scene& Scene, std::vector<DrawCommand>& OutCommands)
+{
+	auto& Objects = Scene.GetRenderObjects();
+	uint32_t Index = 0;
+
+	for (auto& Object : Objects)
+	{
+		for (auto SubMesh : Object.Model->SubMeshes)
+		{
+			DrawCommand Command;
+			Command.Mesh = Object.Model->Mesh.get();
+			Command.Material = DefaultMaterial.get();
+			if (SubMesh.MaterialIndex != InvalidMaterialIndex && SubMesh.MaterialIndex < Object.Model->Materials.size())
+			{
+				Command.Material = Object.Model->Materials[SubMesh.MaterialIndex].get();
+			}
+			Command.IndexStart = SubMesh.IndexStart;
+			Command.IndexCount = SubMesh.IndexCount;
+			Command.ObjectIndex = Index;
+
+			OutCommands.push_back(Command);
+		}
+		Index++;
+	}
 }

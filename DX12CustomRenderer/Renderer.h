@@ -12,6 +12,7 @@
 #include "RenderModel.h"
 #include "RenderObject.h"
 #include "Scene.h"
+#include "DrawCommand.h"
 
 #include "dxgi1_6.h"
 #include "dxcapi.h"
@@ -92,8 +93,8 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
-	void RenderGBufferPass(const Scene& Scene, FrameResource& Frame, UINT FrameIndex);
-	void RenderShadowPass(const Scene& MainScene, FrameResource& Frame);
+	void RenderGBufferPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame, UINT FrameIndex);
+	void RenderShadowPass(std::vector<DrawCommand> DrawCommands, FrameResource& Frame);
 	void RenderDeferredLightingPass(FrameResource& Frame);
 	void RenderToneMapping(FrameResource& Frame);
 
@@ -135,6 +136,7 @@ public:
 	//Application 호출용 임시 함수
 	std::shared_ptr<RenderModel> CreateRenderModel(const std::string& FilePath);
 
+	void BuildDrawCommand(const Scene& Scene, std::vector<DrawCommand>& OutCommands);
 private:
 	D3D12Device Device;
 	D3D12CommandQueue CommandQueue;
