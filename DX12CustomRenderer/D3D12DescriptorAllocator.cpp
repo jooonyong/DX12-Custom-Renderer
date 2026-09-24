@@ -22,10 +22,10 @@ bool D3D12DescriptorAllocator::Initialize(D3D12Device* Device, UINT Capacity)
 	return true;
 }
 
-D3D12DescriptorHandle D3D12DescriptorAllocator::Allocate()
+D3D12DescriptorHandle D3D12DescriptorAllocator::Allocate(UINT Count)
 {
 	D3D12DescriptorHandle Handle{};
-	if (NextFreeIndex >= Capacity)
+	if (NextFreeIndex + Count >= Capacity)
 	{
 		return Handle;
 	}
@@ -34,10 +34,26 @@ D3D12DescriptorHandle D3D12DescriptorAllocator::Allocate()
 	D3D12_GPU_DESCRIPTOR_HANDLE GPUStart = DescriptorHeap->GetGPUDescriptorHandleForHeapStart();
 
 	Handle.Index = NextFreeIndex;
+	Handle.Count = Count;
 	Handle.CPU.ptr = CPUStart.ptr + static_cast<SIZE_T>(NextFreeIndex) * DescriptorSize;
 	Handle.GPU.ptr = GPUStart.ptr + static_cast<SIZE_T>(NextFreeIndex) * DescriptorSize;
-
-	NextFreeIndex++;
+	NextFreeIndex += Count;
 
 	return Handle;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE D3D12DescriptorAllocator::GetCPUHandle(D3D12DescriptorHandle& DescriptorHandle, UINT Offset)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE Result = DescriptorHandle.CPU;
+	Result.ptr += static_cast<SIZE_T>(Offset) * DescriptorSize;
+
+	return Result;
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE D3D12DescriptorAllocator::GetGPUHandle(D3D12DescriptorHandle& DescriptorHandle, UINT Offset)
+{
+	D3D12_GPU_DESCRIPTOR_HANDLE Result = DescriptorHandle.GPU;
+	Result.ptr += static_cast<SIZE_T>(Offset) * DescriptorSize;
+
+	return Result;
 }

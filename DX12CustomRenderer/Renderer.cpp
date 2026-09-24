@@ -324,7 +324,7 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 
 	CommandList->OMSetRenderTargets(1, &SceneColorRTV, FALSE, nullptr);
 
-	CommandList->SetGraphicsRootDescriptorTable(0, GBufferASRV.GPU); //t0(GBufferA), t1(GBufferB), t2, t3(Depth)
+	CommandList->SetGraphicsRootDescriptorTable(0, GBufferDescriptorTable.GPU); //t0(GBufferA), t1(GBufferB), t2, t3(Depth)
 	CommandList->SetGraphicsRootConstantBufferView(1, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0
 	CommandList->SetGraphicsRootConstantBufferView(2, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b1
 	CommandList->SetGraphicsRootConstantBufferView(3, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress()); //b2
@@ -931,7 +931,7 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	SRVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	SRVRange.RegisterSpace = 0;
 	SRVRange.NumDescriptors = 4;
-	SRVRange.BaseShaderRegister = 0; //t0
+	SRVRange.BaseShaderRegister = 0; //t0 ~ t3
 	SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	D3D12_DESCRIPTOR_RANGE ShadowRange{};
@@ -1440,8 +1440,6 @@ bool Renderer::CreateDepthBuffer()
 	DSV = DSVHeap->GetCPUDescriptorHandleForHeapStart();
 	Device.GetDevice()->CreateDepthStencilView(DepthBuffer.Get(), &DSVWriteDesc, DSV);
 
-	DepthSRV = SRVDescriptorAllocator.Allocate();
-
 	D3D12_SHADER_RESOURCE_VIEW_DESC DepthSRVDesc{};
 	DepthSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
 	DepthSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -1451,7 +1449,8 @@ bool Renderer::CreateDepthBuffer()
 	DepthSRVDesc.Texture2D.PlaneSlice = 0;
 	DepthSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
-	Device.GetDevice()->CreateShaderResourceView(DepthBuffer.Get(), &DepthSRVDesc, DepthSRV.CPU);
+	D3D12_CPU_DESCRIPTOR_HANDLE DepthDescHandle = SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 3);
+	Device.GetDevice()->CreateShaderResourceView(DepthBuffer.Get(), &DepthSRVDesc, DepthDescHandle);
 
 	return true;
 }
@@ -1507,7 +1506,7 @@ bool Renderer::CreateShadowMap()
 	ShadowDSV = ShadowDSVHeap->GetCPUDescriptorHandleForHeapStart();
 	Device.GetDevice()->CreateDepthStencilView(ShadowDepthTexture.Get(), &DSVDesc, ShadowDSV);
 
-	ShadowSRV = SRVDescriptorAllocator.Allocate();
+	ShadowSRV = SRVDescriptorAllocator.Allocate(1);
 	
 	D3D12_SHADER_RESOURCE_VIEW_DESC ShadowSRVDesc{};
 	ShadowSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
@@ -1601,7 +1600,6 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	Device.GetDevice()->CreateRenderTargetView(GBufferB.Get(), &RTVBDesc, GBufferBRTV);
 	Device.GetDevice()->CreateRenderTargetView(GBufferC.Get(), &RTVCDesc, GBufferCRTV);
 
-
 	D3D12_SHADER_RESOURCE_VIEW_DESC GBufferASRVDesc{};
 	GBufferASRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	GBufferASRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -1616,13 +1614,21 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	GBufferBSRVDesc.Texture2D.MostDetailedMip = 0;
 	GBufferBSRVDesc.Texture2D.MipLevels = 1;
 
-	GBufferASRV = SRVDescriptorAllocator.Allocate();
-	GBufferBSRV = SRVDescriptorAllocator.Allocate();
-	GBufferCSRV = SRVDescriptorAllocator.Allocate();
+	D3D12_SHADER_RESOURCE_VIEW_DESC DepthBufferSRVDesc{};
+	DepthBufferSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	DepthBufferSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	DepthBufferSRVDesc.Texture2D.MipLevels = 1;
+	DepthBufferSRVDesc.Texture2D.MostDetailedMip = 0;
+	DepthBufferSRVDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+	DepthBufferSRVDesc.Texture2D.PlaneSlice = 0;
+	DepthBufferSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
-	Device.GetDevice()->CreateShaderResourceView(GBufferA.Get(), &GBufferASRVDesc, GBufferASRV.CPU);
-	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, GBufferBSRV.CPU);
-	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, GBufferCSRV.CPU);
+	GBufferDescriptorTable = SRVDescriptorAllocator.Allocate(4);
+	
+	Device.GetDevice()->CreateShaderResourceView(GBufferA.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 0));
+	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 1));
+	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 2));
+	Device.GetDevice()->CreateShaderResourceView(DepthBuffer.Get(), &DepthBufferSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 3));
 
 	return true;
 }
@@ -1684,7 +1690,7 @@ bool Renderer::CreateSceneColor(uint32_t Width, uint32_t Height)
 	SRVDesc.Texture2D.MostDetailedMip = 0;
 	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 
-	SceneColorSRV = SRVDescriptorAllocator.Allocate();
+	SceneColorSRV = SRVDescriptorAllocator.Allocate(1);
 	Device.GetDevice()->CreateShaderResourceView(SceneColor.Get(), &SRVDesc, SceneColorSRV.CPU);
 	
 	return true;
@@ -1736,7 +1742,7 @@ std::shared_ptr<Texture> Renderer::CreateTexture(const ImageData& Image, Texture
 		return nullptr;
 	}
 
-	D3D12DescriptorHandle TextureSRV = SRVDescriptorAllocator.Allocate();
+	D3D12DescriptorHandle TextureSRV = SRVDescriptorAllocator.Allocate(1);
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
 	SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;

@@ -186,7 +186,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> DepthBuffer = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DSVHeap = nullptr;
 	D3D12_CPU_DESCRIPTOR_HANDLE DSV;
-	D3D12DescriptorHandle DepthSRV;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowDepthTexture;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> ShadowDSVHeap;
@@ -194,6 +193,7 @@ private:
 	D3D12DescriptorHandle ShadowSRV;
 	
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> GBufferRTVDescriptorHeap;
+	D3D12DescriptorHandle GBufferDescriptorTable;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferA; //BaseColor
 	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferB; //Normal
