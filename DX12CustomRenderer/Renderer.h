@@ -13,6 +13,7 @@
 #include "RenderObject.h"
 #include "Scene.h"
 #include "DrawCommand.h"
+#include "D3D12ResourceStateTracker.h"
 
 #include "dxgi1_6.h"
 #include "dxcapi.h"
@@ -178,6 +179,8 @@ private:
 
 	GLTFLoader ModelLoader;
 	ImageLoader TextureImageLoader;
+
+	ResourceStateTracker StateTracker;
 
 	std::shared_ptr<Texture> DefaultWhiteTexture;
 	std::shared_ptr<Texture> DefaultNormalTexture;

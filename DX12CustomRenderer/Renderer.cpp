@@ -202,6 +202,11 @@ void Renderer::RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameRe
 
 	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
+	
+	StateTracker.Transition(CommandList, GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	StateTracker.Transition(CommandList, GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	StateTracker.Transition(CommandList, GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	StateTracker.Transition(CommandList, DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
@@ -238,23 +243,7 @@ void Renderer::RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameRe
 		CommandList->SetGraphicsRootConstantBufferView(3, Command.Material->GetConstantBufferGPUAddress(FrameIndex)); //b2
 
 		CommandList->DrawIndexedInstanced(Command.IndexCount, 1, Command.IndexStart, 0, 0);
-
 	}
-	
-	D3D12_RESOURCE_BARRIER ResourceBarrier{};
-	ResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	ResourceBarrier.Transition.pResource = GBufferA.Get();
-	ResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	ResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	ResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &ResourceBarrier);
-	ResourceBarrier.Transition.pResource = GBufferB.Get();
-
-	CommandList->ResourceBarrier(1, &ResourceBarrier);
-	ResourceBarrier.Transition.pResource = GBufferC.Get();
-
-	CommandList->ResourceBarrier(1, &ResourceBarrier);
 }
 
 void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame)
@@ -263,6 +252,8 @@ void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameRes
 
 	CommandList->SetPipelineState(ShadowPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(ShadowRootSignature.Get());
+
+	StateTracker.Transition(CommandList, ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 	CommandList->RSSetViewports(1, &ShadowViewport);
 	CommandList->RSSetScissorRects(1, &ShadowScissorRect);
@@ -286,15 +277,6 @@ void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameRes
 		CommandList->SetGraphicsRootConstantBufferView(0, Frame.ObjectConstantBuffer->GetGPUVirtualAddress() + Stride);
 		CommandList->DrawIndexedInstanced(Command.IndexCount, 1, Command.IndexStart, 0, 0);
 	}
-
-	D3D12_RESOURCE_BARRIER Barrier{};
-	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	Barrier.Transition.pResource = ShadowDepthTexture.Get();
-	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &Barrier);
 }
 
 void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
@@ -302,15 +284,13 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
-
-	D3D12_RESOURCE_BARRIER DepthResourceBarrier{};
-	DepthResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	DepthResourceBarrier.Transition.pResource = DepthBuffer.Get();
-	DepthResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	DepthResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	DepthResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &DepthResourceBarrier);
+	
+	StateTracker.Transition(CommandList, GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	StateTracker.Transition(CommandList, GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	StateTracker.Transition(CommandList, GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	StateTracker.Transition(CommandList, DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	StateTracker.Transition(CommandList, ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	StateTracker.Transition(CommandList, SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	CommandList->SetPipelineState(DeferredLightingPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(DeferredLightingRootSignature.Get());
@@ -331,44 +311,6 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	CommandList->SetGraphicsRootDescriptorTable(4, ShadowSRV.GPU); //t4(ShadowTexture)
 
 	CommandList->DrawInstanced(3, 1, 0, 0);
-
-	D3D12_RESOURCE_BARRIER GBufferBarrier{};
-	GBufferBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	GBufferBarrier.Transition.pResource = GBufferA.Get();
-	GBufferBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	GBufferBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	GBufferBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &GBufferBarrier);
-	GBufferBarrier.Transition.pResource = GBufferB.Get();
-
-	CommandList->ResourceBarrier(1, &GBufferBarrier);
-	GBufferBarrier.Transition.pResource = GBufferC.Get();
-
-	CommandList->ResourceBarrier(1, &GBufferBarrier);
-
-	D3D12_RESOURCE_BARRIER ShadowBarrier{};
-	ShadowBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	ShadowBarrier.Transition.pResource = ShadowDepthTexture.Get();
-	ShadowBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	ShadowBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	ShadowBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &ShadowBarrier);
-	
-	DepthResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	DepthResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	
-	CommandList->ResourceBarrier(1, &DepthResourceBarrier);
-
-	D3D12_RESOURCE_BARRIER SceneColorBarrier{};
-	SceneColorBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	SceneColorBarrier.Transition.pResource = SceneColor.Get();
-	SceneColorBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	SceneColorBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	SceneColorBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-	CommandList->ResourceBarrier(1, &SceneColorBarrier);
 }
 
 void Renderer::RenderToneMapping(FrameResource& Frame)
@@ -385,6 +327,8 @@ void Renderer::RenderToneMapping(FrameResource& Frame)
 	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
 	CommandList->ResourceBarrier(1, &Barrier);
+
+	StateTracker.Transition(CommandList, SceneColor.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
@@ -413,14 +357,6 @@ void Renderer::RenderToneMapping(FrameResource& Frame)
 
 	CommandList->ResourceBarrier(1, &Barrier);
 
-	D3D12_RESOURCE_BARRIER SceneColorBarrier{};
-	SceneColorBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	SceneColorBarrier.Transition.pResource = SceneColor.Get();
-	SceneColorBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	SceneColorBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	SceneColorBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	
-	CommandList->ResourceBarrier(1, &SceneColorBarrier);
 }
 
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
@@ -1431,6 +1367,8 @@ bool Renderer::CreateDepthBuffer()
 		return false;
 	}
 
+	StateTracker.RegisterResource(DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
+
 	D3D12_DEPTH_STENCIL_VIEW_DESC DSVWriteDesc{};
 	DSVWriteDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	DSVWriteDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
@@ -1482,8 +1420,11 @@ bool Renderer::CreateShadowMap()
 	{
 		return false;
 	}
+
 	//프로파일용 텍스쳐 이름 설정
 	ShadowDepthTexture->SetName(L"ShadowDepthTexture");	
+
+	StateTracker.RegisterResource(ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 	D3D12_DESCRIPTOR_HEAP_DESC DSVHeapDesc{};
 	DSVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
@@ -1567,6 +1508,10 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	{
 		return false;
 	}
+
+	StateTracker.RegisterResource(GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	StateTracker.RegisterResource(GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	StateTracker.RegisterResource(GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 	
 	//RTV Descriptor용 DescriptorHeap 생성
 	D3D12_DESCRIPTOR_HEAP_DESC GBufferDescHeapDesc{};
@@ -1614,21 +1559,11 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	GBufferBSRVDesc.Texture2D.MostDetailedMip = 0;
 	GBufferBSRVDesc.Texture2D.MipLevels = 1;
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC DepthBufferSRVDesc{};
-	DepthBufferSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
-	DepthBufferSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	DepthBufferSRVDesc.Texture2D.MipLevels = 1;
-	DepthBufferSRVDesc.Texture2D.MostDetailedMip = 0;
-	DepthBufferSRVDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-	DepthBufferSRVDesc.Texture2D.PlaneSlice = 0;
-	DepthBufferSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-
 	GBufferDescriptorTable = SRVDescriptorAllocator.Allocate(4);
 	
 	Device.GetDevice()->CreateShaderResourceView(GBufferA.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 0));
 	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 1));
 	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 2));
-	Device.GetDevice()->CreateShaderResourceView(DepthBuffer.Get(), &DepthBufferSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 3));
 
 	return true;
 }
@@ -1662,7 +1597,9 @@ bool Renderer::CreateSceneColor(uint32_t Width, uint32_t Height)
 	{
 		return false;
 	}
-	
+
+	StateTracker.RegisterResource(SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+
 	D3D12_DESCRIPTOR_HEAP_DESC RTVHeapDesc{};
 	RTVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	RTVHeapDesc.NumDescriptors = 1;
@@ -1681,7 +1618,6 @@ bool Renderer::CreateSceneColor(uint32_t Width, uint32_t Height)
 	RTVDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 	Device.GetDevice()->CreateRenderTargetView(SceneColor.Get(), &RTVDesc, SceneColorRTV);
-
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
 	SRVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;

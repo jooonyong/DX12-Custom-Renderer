@@ -25,7 +25,7 @@ bool D3D12DescriptorAllocator::Initialize(D3D12Device* Device, UINT Capacity)
 D3D12DescriptorHandle D3D12DescriptorAllocator::Allocate(UINT Count)
 {
 	D3D12DescriptorHandle Handle{};
-	if (NextFreeIndex + Count >= Capacity)
+	if (NextFreeIndex + Count > Capacity)
 	{
 		return Handle;
 	}

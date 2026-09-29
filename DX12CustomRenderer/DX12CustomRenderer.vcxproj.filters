@@ -85,6 +85,9 @@
       <Filter>Source\Asset</Filter>
     </ClCompile>
     <ClCompile Include="Scene.cpp" />
+    <ClCompile Include="D3D12ResourceStateTracker.cpp">
+      <Filter>Source\RHI\D3D12</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -149,6 +152,9 @@
     <ClInclude Include="RenderObject.h" />
     <ClInclude Include="DrawCommand.h">
       <Filter>Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12ResourceStateTracker.h">
+      <Filter>Source\RHI\D3D12</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
