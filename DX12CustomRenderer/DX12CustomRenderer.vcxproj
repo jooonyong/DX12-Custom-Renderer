@@ -142,6 +142,7 @@
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="RenderGraph.cpp" />
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="Texture.cpp" />
     <ClCompile Include="WindowsWindow.cpp" />
@@ -159,6 +160,7 @@
     <ClInclude Include="DrawCommand.h" />
     <ClInclude Include="GeometryGenerator.h" />
     <ClInclude Include="GLTFLoader.h" />
+    <ClInclude Include="RenderGraph.h" />
     <ClInclude Include="Scene.h" />
     <ClInclude Include="ImageData.h" />
     <ClInclude Include="ImageLoader.h" />

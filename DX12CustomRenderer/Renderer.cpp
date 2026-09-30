@@ -203,11 +203,6 @@ void Renderer::RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameRe
 	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
 	CommandList->SetDescriptorHeaps(1, DescriptorHeaps);
 	
-	StateTracker.Transition(CommandList, GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
-	StateTracker.Transition(CommandList, GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
-	StateTracker.Transition(CommandList, GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
-	StateTracker.Transition(CommandList, DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
-
 	CommandList->RSSetViewports(1, &Viewport);
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
@@ -253,8 +248,6 @@ void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameRes
 	CommandList->SetPipelineState(ShadowPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(ShadowRootSignature.Get());
 
-	StateTracker.Transition(CommandList, ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
-
 	CommandList->RSSetViewports(1, &ShadowViewport);
 	CommandList->RSSetScissorRects(1, &ShadowScissorRect);
 
@@ -284,13 +277,6 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
-	
-	StateTracker.Transition(CommandList, GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	StateTracker.Transition(CommandList, GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	StateTracker.Transition(CommandList, GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	StateTracker.Transition(CommandList, DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	StateTracker.Transition(CommandList, ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	StateTracker.Transition(CommandList, SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	CommandList->SetPipelineState(DeferredLightingPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(DeferredLightingRootSignature.Get());
@@ -328,8 +314,6 @@ void Renderer::RenderToneMapping(FrameResource& Frame)
 
 	CommandList->ResourceBarrier(1, &Barrier);
 
-	StateTracker.Transition(CommandList, SceneColor.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
 	float ClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	CommandList->ClearRenderTargetView(SwapChain.GetCurrentRTV(), ClearColor, 0, nullptr);
 
@@ -356,7 +340,6 @@ void Renderer::RenderToneMapping(FrameResource& Frame)
 	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 
 	CommandList->ResourceBarrier(1, &Barrier);
-
 }
 
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
@@ -421,15 +404,63 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			Material->UpdateGPU(CurrentIndex);
 		}
 	}
-		
-	RenderGBufferPass(DrawCommands, CurrentFrame, CurrentIndex);
-	RenderShadowPass(DrawCommands, CurrentFrame);
-	RenderDeferredLightingPass(CurrentFrame);
-	RenderToneMapping(CurrentFrame);
+	
+	Graph.AddPass("GBufferPass",
+		{
+			{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+			{ GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+			{ GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+			{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
+		},
+		[&](ID3D12GraphicsCommandList* CommandList)
+		{
+			Renderer::RenderGBufferPass(DrawCommands, CurrentFrame, CurrentIndex);
+		}
+	);
+	Graph.AddPass("ShadowPass",
+		{
+			{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
+		},
+		[&](ID3D12GraphicsCommandList* CommandList)
+		{
+			Renderer::RenderShadowPass(DrawCommands, CurrentFrame);
+		}
+	);
+	Graph.AddPass("DeferredLightingPass",
+		{
+			{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+			{ GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+			{ GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+			{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+			{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+			{ SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write}
+		},
+		[&](ID3D12GraphicsCommandList* CommandList)
+		{
+			Renderer::RenderDeferredLightingPass(CurrentFrame);
+		}
+	);
+	Graph.AddPass("ToneMapping",
+		{
+			{ SceneColor.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read}
+		},
+		[&](ID3D12GraphicsCommandList* CommandList)
+		{
+			Renderer::RenderToneMapping(CurrentFrame);
+		}
+	);
+	//RenderGBufferPass(DrawCommands, CurrentFrame, CurrentIndex);
+	//RenderShadowPass(DrawCommands, CurrentFrame);
+	//RenderDeferredLightingPass(CurrentFrame);
+	//RenderToneMapping(CurrentFrame);
+
+	Graph.Execute(CommandContext.GetCommandList(), StateTracker);
 
 	CommandContext.Close();
 	CommandQueue.Execute(&CommandContext);
 	SwapChain.Present();
+
+	Graph.Reset();
 
 	UINT64 FenceValue = CommandQueue.Signal();
 	if (FenceValue == 0)

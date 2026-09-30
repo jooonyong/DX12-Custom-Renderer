@@ -14,7 +14,7 @@
 #include "Scene.h"
 #include "DrawCommand.h"
 #include "D3D12ResourceStateTracker.h"
-
+#include "RenderGraph.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
@@ -181,6 +181,7 @@ private:
 	ImageLoader TextureImageLoader;
 
 	ResourceStateTracker StateTracker;
+	RenderGraph Graph;
 
 	std::shared_ptr<Texture> DefaultWhiteTexture;
 	std::shared_ptr<Texture> DefaultNormalTexture;
