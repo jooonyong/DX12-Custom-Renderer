@@ -25,6 +25,7 @@ struct RenderGraphPass
 {
 	std::string Name;
 	std::vector<RenderGraphResourceUsage> ResourceUsages;
+	std::vector<uint32_t> Dependencies;
 	std::function<void(ID3D12GraphicsCommandList*)> Execute;
 };
 
@@ -33,8 +34,12 @@ class RenderGraph
 public:
     void AddPass(std::string Name, std::vector<RenderGraphResourceUsage> Resources, std::function<void(ID3D12GraphicsCommandList*)> Execute);
     void Execute(ID3D12GraphicsCommandList* CommandList, ResourceStateTracker& StateTracker);
-    void Reset();
 
+	void Compile();
+	void BuildDependency();
+	void Reset();
+
+	bool HasDependency(RenderGraphPass& PrevPass, RenderGraphPass& CurrentPass);
 private:
 	std::vector<RenderGraphPass> Passes;
 };

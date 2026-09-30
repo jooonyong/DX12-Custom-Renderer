@@ -94,10 +94,10 @@ public:
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
-	void RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex);
-	void RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame);
-	void RenderDeferredLightingPass(FrameResource& Frame);
-	void RenderToneMapping(FrameResource& Frame);
+	void RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex);
+	void RenderShadowPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame);
+	void RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
+	void RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
 
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 

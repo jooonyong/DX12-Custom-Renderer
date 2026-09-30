@@ -193,10 +193,8 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	return true;
 }
 
-void Renderer::RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex)
+void Renderer::RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex)
 {
-	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
-
 	CommandList->SetPipelineState(GBufferPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(GBufferRootSignature.Get());
 
@@ -241,10 +239,8 @@ void Renderer::RenderGBufferPass(std::vector<DrawCommand>& DrawCommands, FrameRe
 	}
 }
 
-void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameResource& Frame)
+void Renderer::RenderShadowPass(ID3D12GraphicsCommandList* CommandList,std::vector<DrawCommand>& DrawCommands, FrameResource& Frame)
 {
-	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
-
 	CommandList->SetPipelineState(ShadowPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(ShadowRootSignature.Get());
 
@@ -272,9 +268,8 @@ void Renderer::RenderShadowPass(std::vector<DrawCommand>& DrawCommands, FrameRes
 	}
 }
 
-void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
+void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame)
 {
-	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
 
@@ -299,9 +294,8 @@ void Renderer::RenderDeferredLightingPass(FrameResource& Frame)
 	CommandList->DrawInstanced(3, 1, 0, 0);
 }
 
-void Renderer::RenderToneMapping(FrameResource& Frame)
+void Renderer::RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame)
 {
-	ID3D12GraphicsCommandList* CommandList = CommandContext.GetCommandList();
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
 
@@ -414,7 +408,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		},
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
-			Renderer::RenderGBufferPass(DrawCommands, CurrentFrame, CurrentIndex);
+			Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
 		}
 	);
 	Graph.AddPass("ShadowPass",
@@ -423,7 +417,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		},
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
-			Renderer::RenderShadowPass(DrawCommands, CurrentFrame);
+			Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
 		}
 	);
 	Graph.AddPass("DeferredLightingPass",
@@ -437,7 +431,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		},
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
-			Renderer::RenderDeferredLightingPass(CurrentFrame);
+			Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
 		}
 	);
 	Graph.AddPass("ToneMapping",
@@ -446,13 +440,11 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		},
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
-			Renderer::RenderToneMapping(CurrentFrame);
+			Renderer::RenderToneMapping(CommandList, CurrentFrame);
 		}
 	);
-	//RenderGBufferPass(DrawCommands, CurrentFrame, CurrentIndex);
-	//RenderShadowPass(DrawCommands, CurrentFrame);
-	//RenderDeferredLightingPass(CurrentFrame);
-	//RenderToneMapping(CurrentFrame);
+
+	Graph.Compile();
 
 	Graph.Execute(CommandContext.GetCommandList(), StateTracker);
 
