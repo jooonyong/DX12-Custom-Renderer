@@ -37,9 +37,12 @@ public:
 
 	void Compile();
 	void BuildDependency();
+	void BuildExecutionOrder();
 	void Reset();
 
 	bool HasDependency(RenderGraphPass& PrevPass, RenderGraphPass& CurrentPass);
+
 private:
 	std::vector<RenderGraphPass> Passes;
+	std::vector<uint32_t> ExecutionOrder;
 };

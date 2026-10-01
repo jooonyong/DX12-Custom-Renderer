@@ -1,4 +1,7 @@
 #include "RenderGraph.h"
+#include <algorithm>
+#include <queue>
+#include <cassert>
 
 void RenderGraph::AddPass(std::string Name, std::vector<RenderGraphResourceUsage> Resources, std::function<void(ID3D12GraphicsCommandList*)> Execute)
 {
@@ -12,8 +15,9 @@ void RenderGraph::AddPass(std::string Name, std::vector<RenderGraphResourceUsage
 
 void RenderGraph::Execute(ID3D12GraphicsCommandList* CommandList, ResourceStateTracker& StateTracker)
 {
-	for (auto& Pass : Passes)
+	for (auto& Order : ExecutionOrder)
 	{
+		RenderGraphPass& Pass = Passes[Order];
 		for (const auto& Usage : Pass.ResourceUsages)
 		{
 			StateTracker.Transition(CommandList, Usage.Resource, Usage.RequiredState);
@@ -30,10 +34,15 @@ void RenderGraph::Reset()
 void RenderGraph::Compile()
 {
 	BuildDependency();
+	BuildExecutionOrder();
 }
 
 void RenderGraph::BuildDependency()
 {
+	for (auto& Pass : Passes)
+	{
+		Pass.Dependencies.clear();
+	}
 	if (Passes.size() > 1)
 	{
 		for (uint32_t i = 1; i < Passes.size(); i++)
@@ -46,6 +55,51 @@ void RenderGraph::BuildDependency()
 				}
 			}
 		}
+	}
+}
+
+void RenderGraph::BuildExecutionOrder()
+{
+	//Kahn Algorithm
+	ExecutionOrder.clear();
+
+	std::vector<uint32_t> InDegrees(Passes.size(), 0);
+	std::queue<uint32_t> q;
+
+	for (int i = 0; i < Passes.size(); i++)
+	{
+		InDegrees[i] = static_cast<uint32_t>(Passes[i].Dependencies.size());
+		if (Passes[i].Dependencies.size() == 0)
+		{
+			q.push(i);
+		}
+	}
+	while (!q.empty())
+	{
+		uint32_t CurrentIndex = q.front();
+		q.pop();
+		ExecutionOrder.push_back(CurrentIndex);
+
+		for (int i = 0; i < Passes.size(); i++)
+		{
+			for (int j = 0; j < Passes[i].Dependencies.size(); j++)
+			{
+				if (Passes[i].Dependencies[j] != CurrentIndex)
+				{
+					continue;
+				}
+				InDegrees[i]--;
+				if (InDegrees[i] == 0)
+				{
+					q.push(i);
+				}
+				break;
+			}
+		}
+	}
+	if (ExecutionOrder.size() != Passes.size())
+	{
+		assert(false);
 	}
 }
 
