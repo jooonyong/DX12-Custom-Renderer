@@ -2,6 +2,11 @@
 
 D3D12CommandContext::~D3D12CommandContext()
 {
+	if (RaytracingCommandList)
+	{
+		RaytracingCommandList->Release();
+		RaytracingCommandList = nullptr;
+	}
 	if (CommandList)
 	{
 		CommandList->Release();
@@ -20,6 +25,11 @@ bool D3D12CommandContext::Initialize(D3D12Device* Device, ID3D12CommandAllocator
 	{
 		return false;
 	}
+	if (FAILED(CommandList->QueryInterface(IID_PPV_ARGS(&RaytracingCommandList))))
+	{
+		return false;
+	}
+
 	//CommandList는 생성 직후 Open(Recording) 상태이므로 Close()를 호출하여 초기화
 	if (FAILED(CommandList->Close()))
 	{

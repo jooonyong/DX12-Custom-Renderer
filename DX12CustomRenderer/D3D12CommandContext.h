@@ -13,7 +13,9 @@ public:
 	bool Close();
 
 	ID3D12GraphicsCommandList* GetCommandList() const { return CommandList; }
+	ID3D12GraphicsCommandList4* GetRaytracingCommandList() const { return RaytracingCommandList; }	
 
 private:
-	ID3D12GraphicsCommandList* CommandList;
+	ID3D12GraphicsCommandList* CommandList = nullptr;;
+	ID3D12GraphicsCommandList4* RaytracingCommandList = nullptr;
 };
