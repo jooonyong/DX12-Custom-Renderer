@@ -17,6 +17,11 @@ D3D12Device::~D3D12Device()
 		Device->Release();
 		Device = nullptr;
 	}
+	if (RaytracingDevice)
+	{
+		RaytracingDevice->Release();
+		RaytracingDevice = nullptr;
+	}
 }
 
 bool D3D12Device::Initialize()
@@ -28,7 +33,6 @@ bool D3D12Device::Initialize()
 		DebugController->EnableDebugLayer();
 	}
 
-
 	if (!CreateFactory())
 	{
 		return false;
@@ -38,6 +42,10 @@ bool D3D12Device::Initialize()
 		return false;
 	}
 	if (!CreateDevice())
+	{
+		return false;
+	}
+	if (!CheckRaytracingSupport())
 	{
 		return false;
 	}
@@ -68,6 +76,25 @@ bool D3D12Device::SelectAdapter()
 bool D3D12Device::CreateDevice()
 {
 	if (FAILED(D3D12CreateDevice(Adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&Device))))
+	{
+		return false;
+	}
+	if (FAILED(Device->QueryInterface(IID_PPV_ARGS(&RaytracingDevice))))
+	{
+		return false;
+	}
+	return true;
+}
+
+bool D3D12Device::CheckRaytracingSupport()
+{
+	D3D12_FEATURE_DATA_D3D12_OPTIONS5 Options5{};
+	HRESULT Result = RaytracingDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Options5, sizeof(Options5));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	if (Options5.RaytracingTier == D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
 	{
 		return false;
 	}

@@ -15,15 +15,17 @@ public:
 
 	ID3D12Device* GetDevice() const { return Device; }
 	IDXGIFactory4* GetFactory() const { return Factory; }
+	ID3D12Device5* GetRaytracingDevice() const { return RaytracingDevice; }
 
 private:
 	bool CreateFactory();
 	bool SelectAdapter();
 	bool CreateDevice();
-
+	bool CheckRaytracingSupport();
 
 private:
-	IDXGIAdapter* Adapter;
-	IDXGIFactory7* Factory;
-	ID3D12Device* Device;
+	IDXGIAdapter* Adapter = nullptr;;
+	IDXGIFactory7* Factory = nullptr;
+	ID3D12Device* Device = nullptr;
+	ID3D12Device5* RaytracingDevice = nullptr;
 };
