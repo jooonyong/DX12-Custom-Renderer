@@ -84,7 +84,6 @@
     <ClCompile Include="ImageLoader.cpp">
       <Filter>Source\Asset</Filter>
     </ClCompile>
-    <ClCompile Include="Scene.cpp" />
     <ClCompile Include="D3D12ResourceStateTracker.cpp">
       <Filter>Source\RHI\D3D12</Filter>
     </ClCompile>
@@ -92,6 +91,9 @@
       <Filter>Source\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="AccelerationStructure.cpp" />
+    <ClCompile Include="Scene.cpp">
+      <Filter>Source\Scene</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -151,7 +153,6 @@
     <ClInclude Include="ImageLoader.h">
       <Filter>Source\Asset</Filter>
     </ClInclude>
-    <ClInclude Include="Scene.h" />
     <ClInclude Include="RenderModel.h" />
     <ClInclude Include="RenderObject.h" />
     <ClInclude Include="DrawCommand.h">
@@ -165,6 +166,9 @@
     </ClInclude>
     <ClInclude Include="AccelerationStructure.h">
       <Filter>Source\RHI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="Scene.h">
+      <Filter>Source\Scene</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

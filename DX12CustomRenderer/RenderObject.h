@@ -9,4 +9,5 @@ struct RenderObject
 {
     std::shared_ptr<RenderModel> Model;
     DirectX::XMFLOAT4X4 World;
+
 };
