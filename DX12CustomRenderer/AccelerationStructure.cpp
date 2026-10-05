@@ -40,11 +40,12 @@ bool BottomLevelAccelerationStructure::BuildBLAS(D3D12Device* Device, D3D12Comma
 	BuildDesc.Inputs = Inputs;	BuildDesc.ScratchAccelerationStructureData = ScratchBuffer->GetGPUVirtualAddress();
 	BuildDesc.DestAccelerationStructureData = BLASBuffer->GetGPUVirtualAddress();
 
-	CommandList->BuildRaytracingAccelerationStructure()
-	CommandList4->BuildRaytracingAccelerationStructure(
-		&BuildDesc,
-		0,
-		nullptr);
+	CommandContext->GetRaytracingCommandList()->BuildRaytracingAccelerationStructure(&BuildDesc, 0, nullptr);
+	
+	D3D12_RESOURCE_BARRIER Barrier{};
+	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	Barrier.UAV.pResource = BLASBuffer.Get();
+
 	return true;
 }
 
