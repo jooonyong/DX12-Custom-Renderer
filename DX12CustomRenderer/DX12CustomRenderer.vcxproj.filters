@@ -91,6 +91,7 @@
     <ClCompile Include="RenderGraph.cpp">
       <Filter>Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="AccelerationStructure.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -161,6 +162,9 @@
     </ClInclude>
     <ClInclude Include="RenderGraph.h">
       <Filter>Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="AccelerationStructure.h">
+      <Filter>Source\RHI\D3D12</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

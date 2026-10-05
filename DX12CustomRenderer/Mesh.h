@@ -17,6 +17,9 @@ public:
 
 	bool Initialize(MeshData Data);
 
+	Microsoft::WRL::ComPtr<ID3D12Resource> const GetVertexBuffer() { return VertexBuffer; }
+	Microsoft::WRL::ComPtr<ID3D12Resource> const GetIndexBuffer() { return IndexBuffer; }
+
 	D3D12_VERTEX_BUFFER_VIEW GetVertexBufferView();
 	D3D12_INDEX_BUFFER_VIEW GetIndexBufferView();
 
