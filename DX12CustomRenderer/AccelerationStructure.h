@@ -8,13 +8,13 @@ class AccelerationStructure
 {
 public:
 	bool CreateScratchBuffer(ID3D12Device* Device, UINT64 SizeInBytes);
-	virtual bool CreateResultBuffer(ID3D12Device* Device, UINT64 SizeInBytes);
+	virtual bool CreateResultBuffer(ID3D12Device* Device, UINT64 SizeInBytes) = 0;
 
 protected:
 	Microsoft::WRL::ComPtr<ID3D12Resource> ScratchBuffer;
 };
 
-class BottomLevelAccelerationStructure : AccelerationStructure
+class BottomLevelAccelerationStructure : public AccelerationStructure
 {
 public:
 	bool BuildBLAS(D3D12Device* Device, D3D12CommandContext* CommandContext, Mesh* Mesh);
@@ -27,7 +27,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> BLASBuffer;
 };
 
-class TopLevelAccelerationStructure : AccelerationStructure
+class TopLevelAccelerationStructure : public AccelerationStructure
 {
 public:
 	bool BuildTLAS(D3D12Device* Device, D3D12CommandContext* CommandContext, const Scene& Scene);

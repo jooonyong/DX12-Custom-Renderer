@@ -25,10 +25,6 @@ bool AccelerationStructure::CreateScratchBuffer(ID3D12Device* Device, UINT64 Siz
 	}
 	return true;
 }
-bool AccelerationStructure::CreateResultBuffer(ID3D12Device* Device, UINT64 SizeInBytes)
-{
-
-}
 
 bool BottomLevelAccelerationStructure::BuildBLAS(D3D12Device* Device, D3D12CommandContext* CommandContext, Mesh* Mesh)
 {
@@ -125,7 +121,7 @@ bool TopLevelAccelerationStructure::BuildTLAS(D3D12Device* Device, D3D12CommandC
 		Instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
 		Instance.AccelerationStructure = Object.Model->BLAS->GetBLASBuffer()->GetGPUVirtualAddress();
 
-		DirectX::XMFLOAT4X4 World;// = DirectX::XMLoadFloat4x4(&Object.World);
+		DirectX::XMFLOAT4X4 World;
 		DirectX::XMMATRIX M = DirectX::XMLoadFloat4x4(&Object.World);
 		DirectX::XMStoreFloat4x4(&World, DirectX::XMMatrixTranspose(M));
 
@@ -198,7 +194,7 @@ bool TopLevelAccelerationStructure::CreateInstanceBuffer(ID3D12Device* Device, s
 	InstanceBufferDesc.DepthOrArraySize = 1;
 	InstanceBufferDesc.SampleDesc = { 1,0 };
 	InstanceBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	InstanceBufferDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	InstanceBufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
 	D3D12_HEAP_PROPERTIES HeapProp{};
 	HeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -217,7 +213,7 @@ bool TopLevelAccelerationStructure::CreateInstanceBuffer(ID3D12Device* Device, s
 		return false;
 	}
 
-	memcpy(MappedData, InstanceBuffer.Get(), BufferSize);
+	memcpy(MappedData,  Descs.data(), BufferSize);
 	InstanceBuffer->Unmap(0, nullptr);
 
 	return true;

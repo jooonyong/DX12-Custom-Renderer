@@ -3,10 +3,11 @@
 #include "Mesh.h"
 #include "Material.h"
 #include "ModelData.h"
-#include "AccelerationStructure.h"
 
 #include <memory>
 #include <vector>
+
+class BottomLevelAccelerationStructure;
 
 struct RenderModel
 {

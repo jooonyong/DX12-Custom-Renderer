@@ -3,6 +3,7 @@
 #include "Texture.h"
 #include "Material.h"
 #include "GeometryGenerator.h"
+#include "AccelerationStructure.h"
 
 Renderer::Renderer() = default;
 Renderer::~Renderer()
@@ -398,7 +399,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			Material->UpdateGPU(CurrentIndex);
 		}
 	}
-	
+	TLAS->BuildTLAS(&Device, &CommandContext, MainScene);
 	Graph.AddPass("GBufferPass",
 		{
 			{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},

@@ -30,6 +30,7 @@ static constexpr UINT MaxRenderObjects = 1024;
 class IDxcBlob;
 class Camera;
 class Material;
+class TopLevelAccelerationStructure;
 
 struct FrameResource
 {
@@ -225,4 +226,6 @@ private:
 
 	UINT Width;
 	UINT Height;
+	
+	std::unique_ptr<TopLevelAccelerationStructure> TLAS;
 };
