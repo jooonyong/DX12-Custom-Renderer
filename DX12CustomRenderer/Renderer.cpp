@@ -1805,6 +1805,11 @@ std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const std::string& File
 	Model->Mesh = CreateMesh(LoadedModel.Mesh);
 	Model->SubMeshes = LoadedModel.SubMeshes;
 	Model->Materials.reserve(LoadedModel.Materials.size());
+	Model->BLAS = std::make_unique<BottomLevelAccelerationStructure>();
+	if (!Model->BLAS->BuildBLAS(&Device, &CommandContext, Model->Mesh.get()))
+	{
+		return nullptr;
+	}
 
 	for (const MaterialData& MaterialData : LoadedModel.Materials)
 	{

@@ -24,15 +24,15 @@ bool BottomLevelAccelerationStructure::BuildBLAS(D3D12Device* Device, D3D12Comma
 	Inputs.pGeometryDescs = &GeometryDesc;
 	
 	//Prebuild Info
-	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO PrebuildInfo;
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO PrebuildInfo{};
 	
 	Device->GetRaytracingDevice()->GetRaytracingAccelerationStructurePrebuildInfo(&Inputs, &PrebuildInfo);
 
-	if (FAILED(CreateScratchBuffer(Device->GetRaytracingDevice(), PrebuildInfo.ScratchDataSizeInBytes)))
+	if (!CreateScratchBuffer(Device->GetRaytracingDevice(), PrebuildInfo.ScratchDataSizeInBytes))
 	{
 		return false;
 	}
-	if (FAILED(CreateResultBuffer(Device->GetRaytracingDevice(), PrebuildInfo.ResultDataMaxSizeInBytes)))
+	if (!CreateResultBuffer(Device->GetRaytracingDevice(), PrebuildInfo.ResultDataMaxSizeInBytes))
 	{
 		return false;
 	}
@@ -46,6 +46,7 @@ bool BottomLevelAccelerationStructure::BuildBLAS(D3D12Device* Device, D3D12Comma
 	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 	Barrier.UAV.pResource = BLASBuffer.Get();
 
+	CommandContext->GetRaytracingCommandList()->ResourceBarrier(1, &Barrier);
 	return true;
 }
 
