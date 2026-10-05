@@ -191,6 +191,8 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 
+	TLAS = std::make_unique<TopLevelAccelerationStructure>();
+
 	return true;
 }
 
@@ -399,7 +401,14 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			Material->UpdateGPU(CurrentIndex);
 		}
 	}
-	TLAS->BuildTLAS(&Device, &CommandContext, MainScene);
+	if (!TLAS->IsBuilt())
+	{
+		if (!TLAS->BuildTLAS(&Device, &CommandContext, MainScene))
+		{
+			return;
+		}
+	}
+	
 	Graph.AddPass("GBufferPass",
 		{
 			{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},

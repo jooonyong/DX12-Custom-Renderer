@@ -36,8 +36,10 @@ public:
 	bool CreateResultBuffer(ID3D12Device* Device, UINT64 SizeInBytes) override;
 
 	ID3D12Resource* GetTLASBuffer() const { return TLASBuffer.Get(); }
+	bool IsBuilt() const { return bBuilt; }
 private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> InstanceBuffer;
 	Microsoft::WRL::ComPtr<ID3D12Resource> TLASBuffer;
 
+	bool bBuilt = false;
 };

@@ -177,6 +177,8 @@ bool TopLevelAccelerationStructure::BuildTLAS(D3D12Device* Device, D3D12CommandC
 	Barrier.UAV.pResource = TLASBuffer.Get();
 
 	CommandContext->GetRaytracingCommandList()->ResourceBarrier(1, &Barrier);
+
+	bBuilt = true;
 	return true;
 }
 
