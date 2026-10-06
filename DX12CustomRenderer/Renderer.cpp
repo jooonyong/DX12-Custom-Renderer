@@ -192,6 +192,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 
 	TLAS = std::make_unique<TopLevelAccelerationStructure>();
+	if (!CreateRaytracingOutputBuffer(Width, Height))
+	{
+		return false;
+	}
 
 	return true;
 }
@@ -404,6 +408,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	if (!TLAS->IsBuilt())
 	{
 		if (!TLAS->BuildTLAS(&Device, &CommandContext, MainScene))
+		{
+			return;
+		}
+		if (!CreateRaytracingDescriptors())
 		{
 			return;
 		}
@@ -1897,4 +1905,52 @@ void Renderer::BuildDrawCommand(const Scene& Scene, std::vector<DrawCommand>& Ou
 		}
 		Index++;
 	}
+}
+
+bool Renderer::CreateRaytracingOutputBuffer(UINT Width, UINT Height)
+{
+	D3D12_RESOURCE_DESC Desc{};
+	Desc.Width = Width;
+	Desc.Height = Height;
+	Desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	Desc.MipLevels = 1;
+	Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	Desc.DepthOrArraySize = 1;
+	Desc.SampleDesc = { 1,0 };
+	Desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	Desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &Desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 
+		nullptr, IID_PPV_ARGS(&RaytracingOutput));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	return true;
+}
+
+bool Renderer::CreateRaytracingDescriptors()
+{
+	RaytracingTLASSRV = SRVDescriptorAllocator.Allocate(1);
+	RaytracingOutputUAV = SRVDescriptorAllocator.Allocate(1);
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC TLASSRVDesc{};
+	TLASSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+	TLASSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	TLASSRVDesc.RaytracingAccelerationStructure.Location = TLAS->GetTLASBuffer()->GetGPUVirtualAddress();
+
+	Device.GetRaytracingDevice()->CreateShaderResourceView(nullptr, &TLASSRVDesc, RaytracingTLASSRV.CPU);
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC OutputUAVDesc{};
+	OutputUAVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	OutputUAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+	OutputUAVDesc.Texture2D.MipSlice = 0;
+	OutputUAVDesc.Texture2D.PlaneSlice = 0;
+
+	Device.GetRaytracingDevice()->CreateUnorderedAccessView(RaytracingOutput.Get(), nullptr, &OutputUAVDesc, RaytracingOutputUAV.CPU);
+	
+	return true;
 }

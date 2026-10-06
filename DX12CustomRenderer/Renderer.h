@@ -139,6 +139,10 @@ public:
 	std::shared_ptr<RenderModel> CreateRenderModel(const std::string& FilePath);
 
 	void BuildDrawCommand(const Scene& Scene, std::vector<DrawCommand>& OutCommands);
+
+	bool CreateRaytracingOutputBuffer(UINT Width, UINT Height);
+	bool CreateRaytracingDescriptors();
+
 private:
 	D3D12Device Device;
 	D3D12CommandQueue CommandQueue;
@@ -227,5 +231,9 @@ private:
 	UINT Width;
 	UINT Height;
 	
+	D3D12DescriptorHandle RaytracingTLASSRV;
+	D3D12DescriptorHandle RaytracingOutputUAV;
+
 	std::unique_ptr<TopLevelAccelerationStructure> TLAS;
+	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracingOutput;
 };

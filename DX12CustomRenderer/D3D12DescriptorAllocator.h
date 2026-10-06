@@ -29,6 +29,7 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetGPUHandle(D3D12DescriptorHandle& DescriptorHandle, UINT Offset);
 
     ID3D12DescriptorHeap* GetHeap() const { return DescriptorHeap.Get(); }
+
 private:
     D3D12Device* Device = nullptr;
 
