@@ -119,7 +119,8 @@ public:
 
 	bool CreateShaders();
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const wchar_t* FilePath, const wchar_t* EntryPoint, const wchar_t* TargetProfile);
-
+	bool CompileRaytracingShader(const wchar_t* FilePath, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob);
+	
 	bool CreateDepthBuffer();
 	bool CreateShadowMap();
 	bool CreateGBuffers(uint32_t Width, uint32_t Height);
@@ -142,6 +143,8 @@ public:
 
 	bool CreateRaytracingOutputBuffer(UINT Width, UINT Height);
 	bool CreateRaytracingDescriptors();
+
+	bool CreateRaytracingGlobalRootSignature();
 
 private:
 	D3D12Device Device;
@@ -171,6 +174,8 @@ private:
 	Microsoft::WRL::ComPtr<IDxcBlob> ToneMappingVertexShader;
 	Microsoft::WRL::ComPtr<IDxcBlob> ToneMappingPixelShader;
 	
+	Microsoft::WRL::ComPtr<IDxcBlob> RaytracingLibrary = nullptr;
+
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> MainPipelineState = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> ShadowPipelineState = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> GBufferPipelineState = nullptr;
@@ -236,4 +241,7 @@ private:
 
 	std::unique_ptr<TopLevelAccelerationStructure> TLAS;
 	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracingOutput;
+
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> RaytracingGlobalRootSignature;
+
 };

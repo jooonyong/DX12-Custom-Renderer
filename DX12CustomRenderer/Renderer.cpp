@@ -1204,7 +1204,10 @@ bool Renderer::CreateShaders()
 	{
 		return false;
 	}
-
+	if (!CompileRaytracingShader(L"Raytracing.hlsl", RaytracingLibrary))
+	{
+		return false;
+	}
 	return true;
 }
 
@@ -1241,7 +1244,6 @@ Microsoft::WRL::ComPtr<IDxcBlob> Renderer::CompileShader(const wchar_t* FilePath
 	};
 
 	Microsoft::WRL::ComPtr<IDxcIncludeHandler> IncludeHandler;
-
 	if (FAILED(Utils->CreateDefaultIncludeHandler(&IncludeHandler)))
 	{
 		return nullptr;
@@ -1275,6 +1277,71 @@ Microsoft::WRL::ComPtr<IDxcBlob> Renderer::CompileShader(const wchar_t* FilePath
 		return nullptr;
 	}
 	return ShaderBlob;
+}
+
+bool Renderer::CompileRaytracingShader(const wchar_t* FilePath, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob)
+{
+	Microsoft::WRL::ComPtr<IDxcUtils> Utils;
+	Microsoft::WRL::ComPtr<IDxcCompiler3> Compiler;
+	Microsoft::WRL::ComPtr<IDxcBlobEncoding> SourceBlob;
+
+	if (FAILED(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&Utils))))
+	{
+		return false;
+	}
+	if (FAILED(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&Compiler))))
+	{
+		return false;
+	}
+	if (FAILED(Utils->LoadFile(FilePath, nullptr, &SourceBlob)))
+	{
+		return false;
+	}
+
+	DxcBuffer Source{};
+	Source.Ptr = SourceBlob->GetBufferPointer();
+	Source.Size = SourceBlob->GetBufferSize();
+	Source.Encoding = DXC_CP_UTF8;
+
+	LPCWSTR Arguments[] =
+	{
+		L"-T", L"lib_6_3",
+		L"-Zi",
+		L"-Qembed_debug"
+	};
+
+	Microsoft::WRL::ComPtr<IDxcIncludeHandler> IncludeHandler;
+	if (FAILED(Utils->CreateDefaultIncludeHandler(&IncludeHandler)))
+	{
+		return false;
+	}
+
+	Microsoft::WRL::ComPtr<IDxcResult> Result;
+	if (FAILED(Compiler->Compile(&Source, Arguments, _countof(Arguments), IncludeHandler.Get(), IID_PPV_ARGS(&Result))))
+	{
+		return false;
+	}
+
+	Microsoft::WRL::ComPtr<IDxcBlobUtf8> Errors;
+
+	Result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&Errors), nullptr);
+	if (Errors && Errors->GetStringLength() > 0)
+	{
+		OutputDebugStringA(Errors->GetStringPointer());
+	}
+
+	HRESULT CompileStatus;
+	Result->GetStatus(&CompileStatus);
+	if (FAILED(CompileStatus))
+	{
+		return false;
+	}
+
+	if (FAILED(Result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&OutShaderBlob), nullptr)))
+	{
+		return false;
+	}
+	return true;
 }
 
 bool Renderer::CreateMainPipelineState()
@@ -1952,5 +2019,59 @@ bool Renderer::CreateRaytracingDescriptors()
 
 	Device.GetRaytracingDevice()->CreateUnorderedAccessView(RaytracingOutput.Get(), nullptr, &OutputUAVDesc, RaytracingOutputUAV.CPU);
 	
+	return true;
+}
+
+bool Renderer::CreateRaytracingGlobalRootSignature()
+{
+	D3D12_DESCRIPTOR_RANGE Ranges[2]{};
+
+	// t0 : TLAS
+	Ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	Ranges[0].NumDescriptors = 1;
+	Ranges[0].BaseShaderRegister = 0;
+	Ranges[0].RegisterSpace = 0;
+	Ranges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	// u0 : Output
+	Ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+	Ranges[1].NumDescriptors = 1;
+	Ranges[1].BaseShaderRegister = 0;
+	Ranges[1].RegisterSpace = 0;
+	Ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[2]{};
+	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[0].DescriptorTable.pDescriptorRanges = &Ranges[0];
+	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[1].DescriptorTable.pDescriptorRanges = &Ranges[1];
+	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL; 
+
+	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
+	RootSignatureDesc.NumParameters = _countof(RootParameters);
+	RootSignatureDesc.pParameters = RootParameters;
+	RootSignatureDesc.NumStaticSamplers = 0;
+	RootSignatureDesc.pStaticSamplers = nullptr;
+	RootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+	
+	Microsoft::WRL::ComPtr<ID3DBlob> SignatureBlob;
+	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
+
+	HRESULT Result = D3D12SerializeRootSignature(&RootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &SignatureBlob, &ErrorBlob);
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	
+	Result = Device.GetRaytracingDevice()->CreateRootSignature(0, SignatureBlob->GetBufferPointer(), SignatureBlob->GetBufferSize(), IID_PPV_ARGS(&RaytracingGlobalRootSignature));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
 	return true;
 }

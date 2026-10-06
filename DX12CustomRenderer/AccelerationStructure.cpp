@@ -215,7 +215,7 @@ bool TopLevelAccelerationStructure::CreateInstanceBuffer(ID3D12Device* Device, s
 		return false;
 	}
 
-	memcpy(MappedData,  Descs.data(), BufferSize);
+	memcpy(MappedData, Descs.data(), BufferSize);
 	InstanceBuffer->Unmap(0, nullptr);
 
 	return true;

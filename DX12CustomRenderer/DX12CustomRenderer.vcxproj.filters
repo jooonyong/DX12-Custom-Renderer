@@ -187,5 +187,8 @@
     <None Include="ToneMapping.hlsl">
       <Filter>Source\Shaders</Filter>
     </None>
+    <None Include="Raytracing.hlsl">
+      <Filter>Source\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>
