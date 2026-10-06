@@ -147,6 +147,9 @@ public:
 	bool CreateRaytracingGlobalRootSignature();
 	bool CreateRaytracingStateObject();
 
+	bool CreateShaderBindingTable();
+	bool CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer);
+
 private:
 	D3D12Device Device;
 	D3D12CommandQueue CommandQueue;
@@ -246,4 +249,9 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> RaytracingGlobalRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12StateObject> RaytracingStateObject;
 	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> RaytracingPipelineStateProperties;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> RayGenShaderTable;
+	Microsoft::WRL::ComPtr<ID3D12Resource> MissShaderTable;
+	Microsoft::WRL::ComPtr<ID3D12Resource> HitGroupShaderTable;
+
 };

@@ -204,6 +204,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateShaderBindingTable())
+	{
+		return false;
+	}
 	return true;
 }
 
@@ -2112,7 +2116,8 @@ bool Renderer::CreateRaytracingStateObject()
 	D3D12_RAYTRACING_PIPELINE_CONFIG PipelineConfig{};
 	PipelineConfig.MaxTraceRecursionDepth = 1;
 
-	ID3D12RootSignature* GlobalRootSignature = RaytracingGlobalRootSignature.Get();
+	D3D12_GLOBAL_ROOT_SIGNATURE GlobalRootSignature{};
+	GlobalRootSignature.pGlobalRootSignature = RaytracingGlobalRootSignature.Get();
 
 	D3D12_STATE_SUBOBJECT Subobjects[5]{};
 	Subobjects[0].Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
@@ -2145,5 +2150,66 @@ bool Renderer::CreateRaytracingStateObject()
 	{
 		return false;
 	}
+	return true;
+}
+
+bool Renderer::CreateShaderBindingTable()
+{
+	void* RayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"RayGen");
+	void* MissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"Miss");
+	void* HitGroupIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"HitGroup");
+
+	if(!RayGenIdentifier || !MissIdentifier || !HitGroupIdentifier)
+	{
+		return false;
+	}
+
+	if (!CreateShaderTable(RayGenIdentifier, RayGenShaderTable))
+	{
+		return false;
+	}
+	if (!CreateShaderTable(MissIdentifier, MissShaderTable))
+	{
+		return false;
+	}
+	if (!CreateShaderTable(HitGroupIdentifier, HitGroupShaderTable))
+	{
+		return false;
+	}
+	return true;
+}
+
+bool Renderer::CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer)
+{
+	UINT BufferSize = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+	D3D12_RESOURCE_DESC BufferDesc{};
+	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	BufferDesc.Width = BufferSize;
+	BufferDesc.Height = 1;
+	BufferDesc.MipLevels = 1;
+	BufferDesc.DepthOrArraySize = 1;
+	BufferDesc.SampleDesc.Count = 1;
+	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, IID_PPV_ARGS(&OutBuffer));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	void* MappedData;
+	Result = OutBuffer->Map(0, nullptr, &MappedData);
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	memcpy(MappedData, ShaderIdentifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+	OutBuffer->Unmap(0, nullptr);
+
 	return true;
 }
