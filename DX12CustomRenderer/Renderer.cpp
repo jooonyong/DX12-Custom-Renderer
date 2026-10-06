@@ -196,7 +196,14 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
-
+	if (!CreateRaytracingGlobalRootSignature())
+	{
+		return false;
+	}
+	if (!CreateRaytracingStateObject())
+	{
+		return false;
+	}
 	return true;
 }
 
@@ -2073,5 +2080,70 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 		return false;
 	}
 
+	return true;
+}
+
+bool Renderer::CreateRaytracingStateObject()
+{
+	D3D12_EXPORT_DESC Exports[3] =
+	{
+		{ L"RayGen", nullptr,D3D12_EXPORT_FLAG_NONE},
+		{ L"Miss", nullptr, D3D12_EXPORT_FLAG_NONE},
+		{ L"ClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE}
+	};
+
+	D3D12_DXIL_LIBRARY_DESC DXILLibraryDesc{};
+	DXILLibraryDesc.DXILLibrary.BytecodeLength = RaytracingLibrary->GetBufferSize();
+	DXILLibraryDesc.DXILLibrary.pShaderBytecode = RaytracingLibrary->GetBufferPointer();
+	DXILLibraryDesc.NumExports = _countof(Exports);
+	DXILLibraryDesc.pExports = Exports;
+
+	D3D12_HIT_GROUP_DESC HitGroupDesc{};
+	HitGroupDesc.HitGroupExport = L"HitGroup";
+	HitGroupDesc.ClosestHitShaderImport = L"ClosestHit";
+	HitGroupDesc.AnyHitShaderImport = nullptr;
+	HitGroupDesc.IntersectionShaderImport = nullptr;
+	HitGroupDesc.Type = D3D12_HIT_GROUP_TYPE_TRIANGLES;
+
+	D3D12_RAYTRACING_SHADER_CONFIG ShaderConfig{};
+	ShaderConfig.MaxPayloadSizeInBytes = sizeof(float) * 3;
+	ShaderConfig.MaxAttributeSizeInBytes = sizeof(float) * 2;
+	
+	D3D12_RAYTRACING_PIPELINE_CONFIG PipelineConfig{};
+	PipelineConfig.MaxTraceRecursionDepth = 1;
+
+	ID3D12RootSignature* GlobalRootSignature = RaytracingGlobalRootSignature.Get();
+
+	D3D12_STATE_SUBOBJECT Subobjects[5]{};
+	Subobjects[0].Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+	Subobjects[0].pDesc = &DXILLibraryDesc;
+
+	Subobjects[1].Type = D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP;
+	Subobjects[1].pDesc = &HitGroupDesc;
+
+	Subobjects[2].Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG;
+	Subobjects[2].pDesc = &ShaderConfig;
+
+	Subobjects[3].Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG;
+	Subobjects[3].pDesc = &PipelineConfig;
+
+	Subobjects[4].Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE;
+	Subobjects[4].pDesc = &GlobalRootSignature;
+
+	D3D12_STATE_OBJECT_DESC StateObjectDesc{};
+	StateObjectDesc.NumSubobjects = _countof(Subobjects);
+	StateObjectDesc.pSubobjects = Subobjects;
+	StateObjectDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateStateObject(&StateObjectDesc, IID_PPV_ARGS(&RaytracingStateObject));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	Result = RaytracingStateObject.As(&RaytracingPipelineStateProperties);
+	if (FAILED(Result))
+	{
+		return false;
+	}
 	return true;
 }

@@ -44,7 +44,7 @@ void Miss(inout RayPayload Payload)
 }
 
 [shader("closesthit")]
-void ClosestHit(inout RayPayload Payload, in Attributes Attr)
+void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttributes Attr)
 {
     Payload.Color = float3(1.0f, 0.0f, 0.0f);
 }

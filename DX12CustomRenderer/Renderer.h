@@ -145,6 +145,7 @@ public:
 	bool CreateRaytracingDescriptors();
 
 	bool CreateRaytracingGlobalRootSignature();
+	bool CreateRaytracingStateObject();
 
 private:
 	D3D12Device Device;
@@ -243,5 +244,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracingOutput;
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> RaytracingGlobalRootSignature;
-
+	Microsoft::WRL::ComPtr<ID3D12StateObject> RaytracingStateObject;
+	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> RaytracingPipelineStateProperties;
 };
