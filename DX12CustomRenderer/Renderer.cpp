@@ -354,6 +354,36 @@ void Renderer::RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameRe
 	CommandList->ResourceBarrier(1, &Barrier);
 }
 
+void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList)
+{
+	CommandList->SetPipelineState1(RaytracingStateObject.Get());
+	CommandList->SetComputeRootSignature(RaytracingGlobalRootSignature.Get());
+	
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };	
+	CommandList->SetDescriptorHeaps(_countof(DescriptorHeaps), DescriptorHeaps);
+
+	CommandList->SetComputeRootDescriptorTable(0, RaytracingTLASSRV.GPU); //t0 TLAS SRV
+	CommandList->SetComputeRootDescriptorTable(1, RaytracingOutputUAV.GPU); //u0 Output UAV
+
+	D3D12_DISPATCH_RAYS_DESC DispatchDesc{};
+	DispatchDesc.RayGenerationShaderRecord.StartAddress = RayGenShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.RayGenerationShaderRecord.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	DispatchDesc.MissShaderTable.StartAddress = MissShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.MissShaderTable.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	DispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	
+	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.HitGroupTable.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	DispatchDesc.HitGroupTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	DispatchDesc.Width = Width;
+	DispatchDesc.Height = Height;
+	DispatchDesc.Depth = 1;
+
+	CommandList->DispatchRays(&DispatchDesc);
+}
+
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
@@ -461,6 +491,26 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
 			Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
+		}
+	);
+	Graph.AddPass("RaytracingPass",
+		{
+			{ RaytracingOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write}
+		},
+		[&](ID3D12GraphicsCommandList* CommandList)
+		{
+			ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
+			Renderer::RenderRaytracingPass(RaytracingCommandList);
+		}
+	);
+	Graph.AddPass("CopyRaytracingOutput",
+		{
+			{ RaytracingOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, RenderGraphAccess::Read},
+			{ SceneColor.Get(), D3D12_RESOURCE_STATE_COPY_DEST, RenderGraphAccess::Write}
+		},
+		[&](ID3D12GraphicsCommandList* CommandList)
+		{
+			CommandList->CopyResource(SceneColor.Get(), RaytracingOutput.Get());
 		}
 	);
 	Graph.AddPass("ToneMapping",
@@ -2007,6 +2057,9 @@ bool Renderer::CreateRaytracingOutputBuffer(UINT Width, UINT Height)
 	{
 		return false;
 	}
+
+	StateTracker.RegisterResource(RaytracingOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
 	return true;
 }
 

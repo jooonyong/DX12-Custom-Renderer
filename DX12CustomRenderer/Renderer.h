@@ -99,6 +99,7 @@ public:
 	void RenderShadowPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame);
 	void RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
 	void RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
+	void RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList);
 
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 
