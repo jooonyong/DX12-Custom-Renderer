@@ -1,6 +1,13 @@
 RaytracingAccelerationStructure SceneAS : register(t0);
 RWTexture2D<float4> OutputTexture : register(u0);
 
+cbuffer InverseViewMatrix : register(b0)
+{
+    float4x4 InverseViewMatrix;
+    float3 CameraPosition;
+    float Padding;
+}
+
 struct RayPayload
 {
 	float3 Color;
@@ -22,9 +29,14 @@ void RayGen()
 
 	NDC.y = -NDC.y;
 
+    float4 NearPlane = mul(float4(NDC.x, NDC.y, 0.0f, 1.0f), InverseViewMatrix);
+    float4 FarPlane = mul(float4(NDC.x, NDC.y, 1.0f, 1.0f), InverseViewMatrix);
+    NearPlane.xyz = NearPlane.xyz / NearPlane.w;
+    FarPlane.xyz = FarPlane.xyz / FarPlane.w;
+    
     RayDesc Ray;
-    Ray.Origin = float3(0.0f, 0.0f, -5.0f);
-    Ray.Direction = normalize(float3(NDC.x, NDC.y, 1.0f));
+    Ray.Origin = CameraPosition;
+    Ray.Direction = FarPlane.xyz - CameraPosition;
 
     Ray.TMin = 0.001f;
     Ray.TMax = 10000.0f;

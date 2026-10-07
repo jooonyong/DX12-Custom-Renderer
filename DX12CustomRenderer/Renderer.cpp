@@ -354,7 +354,7 @@ void Renderer::RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameRe
 	CommandList->ResourceBarrier(1, &Barrier);
 }
 
-void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList)
+void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame)
 {
 	CommandList->SetPipelineState1(RaytracingStateObject.Get());
 	CommandList->SetComputeRootSignature(RaytracingGlobalRootSignature.Get());
@@ -364,7 +364,8 @@ void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList)
 
 	CommandList->SetComputeRootDescriptorTable(0, RaytracingTLASSRV.GPU); //t0 TLAS SRV
 	CommandList->SetComputeRootDescriptorTable(1, RaytracingOutputUAV.GPU); //u0 Output UAV
-
+	CommandList->SetComputeRootConstantBufferView(2, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0 CameraData constantBuffer
+	
 	D3D12_DISPATCH_RAYS_DESC DispatchDesc{};
 	DispatchDesc.RayGenerationShaderRecord.StartAddress = RayGenShaderTable->GetGPUVirtualAddress();
 	DispatchDesc.RayGenerationShaderRecord.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
@@ -500,7 +501,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
 			ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
-			Renderer::RenderRaytracingPass(RaytracingCommandList);
+			Renderer::RenderRaytracingPass(RaytracingCommandList, CurrentFrame);
 		}
 	);
 	Graph.AddPass("CopyRaytracingOutput",
@@ -2104,7 +2105,7 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	Ranges[1].RegisterSpace = 0;
 	Ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[2]{};
+	D3D12_ROOT_PARAMETER RootParameters[3]{};
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParameters[0].DescriptorTable.pDescriptorRanges = &Ranges[0];
@@ -2114,6 +2115,11 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	RootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 	RootParameters[1].DescriptorTable.pDescriptorRanges = &Ranges[1];
 	RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL; 
+
+	RootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[2].Descriptor.RegisterSpace = 0;
+	RootParameters[2].Descriptor.ShaderRegister = 0; //b0 CameraData constantBuffer
+	RootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
 	RootSignatureDesc.NumParameters = _countof(RootParameters);
