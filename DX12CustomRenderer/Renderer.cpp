@@ -200,6 +200,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateLocalRootSignature())
+	{
+		return false;
+	}
 	if (!CreateRaytracingStateObject())
 	{
 		return false;
@@ -2377,7 +2381,7 @@ bool Renderer::CreateLocalRootSignature()
 		return false;
 	}
 
-	Device.GetRaytracingDevice()->CreateRootSignature(0, SignatureBlob->GetBufferPointer(), SignatureBlob->GetBufferSize(), IID_PPV_ARGS(&RaytracingLocalRootSignature));
+	Result = Device.GetRaytracingDevice()->CreateRootSignature(0, SignatureBlob->GetBufferPointer(), SignatureBlob->GetBufferSize(), IID_PPV_ARGS(&RaytracingLocalRootSignature));
 	if (FAILED(Result))
 	{
 		return false;
