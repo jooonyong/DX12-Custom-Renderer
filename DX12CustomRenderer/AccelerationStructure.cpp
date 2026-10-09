@@ -116,7 +116,7 @@ bool TopLevelAccelerationStructure::BuildTLAS(D3D12Device* Device, D3D12CommandC
 		D3D12_RAYTRACING_INSTANCE_DESC& Instance = InstanceDescs[i];
 		Instance = {};
 		Instance.InstanceID = i;
-		Instance.InstanceContributionToHitGroupIndex = 0;
+		Instance.InstanceContributionToHitGroupIndex = i;
 		Instance.InstanceMask = 0xFF;
 		Instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
 		Instance.AccelerationStructure = Object.Model->BLAS->GetBLASBuffer()->GetGPUVirtualAddress();

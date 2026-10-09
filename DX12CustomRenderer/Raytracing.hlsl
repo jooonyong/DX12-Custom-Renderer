@@ -8,6 +8,18 @@ cbuffer InverseViewMatrix : register(b0)
     float Padding;
 }
 
+struct Vertex
+{
+    float3 Position;
+    float4 Color;
+    float2 UV;
+    float3 Normal;
+    float4 Tangent;
+};
+
+StructuredBuffer<Vertex> Vertices : register(t1);
+ByteAddressBuffer Indices : register(t2);
+
 struct RayPayload
 {
 	float3 Color;
@@ -36,7 +48,7 @@ void RayGen()
     
     RayDesc Ray;
     Ray.Origin = CameraPosition;
-    Ray.Direction = FarPlane.xyz - CameraPosition;
+    Ray.Direction = normalize(FarPlane.xyz - CameraPosition);
 
     Ray.TMin = 0.001f;
     Ray.TMax = 10000.0f;

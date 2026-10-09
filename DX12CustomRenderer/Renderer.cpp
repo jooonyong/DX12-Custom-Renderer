@@ -375,8 +375,8 @@ void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, Fra
 	DispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	
 	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable->GetGPUVirtualAddress();
-	DispatchDesc.HitGroupTable.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	DispatchDesc.HitGroupTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	DispatchDesc.HitGroupTable.SizeInBytes = HitGroupRecordSize * HitGroupRecordCount;
+	DispatchDesc.HitGroupTable.StrideInBytes = HitGroupRecordSize;
 
 	DispatchDesc.Width = Width;
 	DispatchDesc.Height = Height;
@@ -454,6 +454,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			return;
 		}
 		if (!CreateRaytracingDescriptors())
+		{
+			return;
+		}
+		if(!CreateHitShaderTable(MainScene))
 		{
 			return;
 		}
@@ -2178,7 +2182,10 @@ bool Renderer::CreateRaytracingStateObject()
 	D3D12_GLOBAL_ROOT_SIGNATURE GlobalRootSignature{};
 	GlobalRootSignature.pGlobalRootSignature = RaytracingGlobalRootSignature.Get();
 
-	D3D12_STATE_SUBOBJECT Subobjects[5]{};
+	D3D12_LOCAL_ROOT_SIGNATURE LocalRootSignature{};
+	LocalRootSignature.pLocalRootSignature = RaytracingLocalRootSignature.Get();
+
+	D3D12_STATE_SUBOBJECT Subobjects[7]{};
 	Subobjects[0].Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
 	Subobjects[0].pDesc = &DXILLibraryDesc;
 
@@ -2193,6 +2200,21 @@ bool Renderer::CreateRaytracingStateObject()
 
 	Subobjects[4].Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE;
 	Subobjects[4].pDesc = &GlobalRootSignature;
+
+	Subobjects[5].Type = D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE;
+	Subobjects[5].pDesc = &LocalRootSignature;
+
+	const wchar_t* LocalRootExports[] =
+	{
+		L"HitGroup"
+	};
+	D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION Association{};
+	Association.NumExports = 1;
+	Association.pExports = LocalRootExports;
+	Association.pSubobjectToAssociate = &Subobjects[5];
+
+	Subobjects[6].Type = D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION;
+	Subobjects[6].pDesc = &Association;
 
 	D3D12_STATE_OBJECT_DESC StateObjectDesc{};
 	StateObjectDesc.NumSubobjects = _countof(Subobjects);
@@ -2216,9 +2238,8 @@ bool Renderer::CreateShaderBindingTable()
 {
 	void* RayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"RayGen");
 	void* MissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"Miss");
-	void* HitGroupIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"HitGroup");
-
-	if(!RayGenIdentifier || !MissIdentifier || !HitGroupIdentifier)
+	
+	if(!RayGenIdentifier || !MissIdentifier)
 	{
 		return false;
 	}
@@ -2231,10 +2252,7 @@ bool Renderer::CreateShaderBindingTable()
 	{
 		return false;
 	}
-	if (!CreateShaderTable(HitGroupIdentifier, HitGroupShaderTable))
-	{
-		return false;
-	}
+	
 	return true;
 }
 
@@ -2270,5 +2288,99 @@ bool Renderer::CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::C
 	memcpy(MappedData, ShaderIdentifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
 	OutBuffer->Unmap(0, nullptr);
 
+	return true;
+}
+
+bool Renderer::CreateHitShaderTable(const Scene& Scene)
+{
+	HitGroupRecordCount = Scene.GetRenderObjects().size();
+
+	const UINT ShaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	const UINT LocalRootArgumentSize = sizeof(D3D12_GPU_VIRTUAL_ADDRESS) * 2;
+
+	HitGroupRecordSize = (ShaderIdentifierSize + LocalRootArgumentSize + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1) & ~(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1);
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+	D3D12_RESOURCE_DESC BufferDesc{};
+	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	BufferDesc.Width = HitGroupRecordSize * HitGroupRecordCount;
+	BufferDesc.Height = 1;
+	BufferDesc.MipLevels = 1;
+	BufferDesc.DepthOrArraySize = 1;
+	BufferDesc.SampleDesc.Count = 1;
+	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, IID_PPV_ARGS(&HitGroupShaderTable));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	void* MappedData;
+	Result = HitGroupShaderTable->Map(0, nullptr, &MappedData);
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	for (int i = 0; i < HitGroupRecordCount; i++)
+	{
+		const RenderObject& Object = Scene.GetRenderObjects()[i];
+		uint8_t* Record = reinterpret_cast<uint8_t*>(MappedData) + i * HitGroupRecordSize;
+
+		// 0 ~ 31
+		memcpy(Record, RaytracingPipelineStateProperties->GetShaderIdentifier(L"HitGroup"), ShaderIdentifierSize);
+		
+		D3D12_GPU_VIRTUAL_ADDRESS VertexAddress = Object.Model->Mesh->GetVertexBuffer()->GetGPUVirtualAddress();
+		D3D12_GPU_VIRTUAL_ADDRESS IndexAddress = Object.Model->Mesh->GetIndexBuffer()->GetGPUVirtualAddress();
+
+		// 32 ~ 39
+		memcpy(Record + ShaderIdentifierSize, &VertexAddress, sizeof(VertexAddress));
+
+		// 40 ~ 47
+		memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress), &IndexAddress, sizeof(IndexAddress));
+	}
+
+	HitGroupShaderTable->Unmap(0,nullptr);
+
+	return true;
+}
+
+bool Renderer::CreateLocalRootSignature()
+{
+	D3D12_ROOT_PARAMETER RootParams[2]{};
+	RootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+	RootParams[0].Descriptor.RegisterSpace = 0;
+	RootParams[0].Descriptor.ShaderRegister = 1; // t1 : Vertices
+	RootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+	RootParams[1].Descriptor.RegisterSpace = 0;	
+	RootParams[1].Descriptor.ShaderRegister = 2; // t2 : Indices
+	RootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
+	RootSignatureDesc.NumParameters = _countof(RootParams);
+	RootSignatureDesc.pParameters = RootParams;
+	RootSignatureDesc.NumStaticSamplers = 0;
+	RootSignatureDesc.pStaticSamplers = nullptr;
+	RootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+
+	Microsoft::WRL::ComPtr<ID3DBlob> SignatureBlob;
+	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
+
+	HRESULT Result = D3D12SerializeRootSignature(&RootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &SignatureBlob, &ErrorBlob);
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	Device.GetRaytracingDevice()->CreateRootSignature(0, SignatureBlob->GetBufferPointer(), SignatureBlob->GetBufferSize(), IID_PPV_ARGS(&RaytracingLocalRootSignature));
+	if (FAILED(Result))
+	{
+		return false;
+	}
 	return true;
 }

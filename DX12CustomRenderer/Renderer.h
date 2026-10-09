@@ -150,6 +150,9 @@ public:
 
 	bool CreateShaderBindingTable();
 	bool CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer);
+	bool CreateHitShaderTable(const Scene& Scene);
+
+	bool CreateLocalRootSignature();
 
 private:
 	D3D12Device Device;
@@ -255,4 +258,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> MissShaderTable;
 	Microsoft::WRL::ComPtr<ID3D12Resource> HitGroupShaderTable;
 
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> RaytracingLocalRootSignature;
+	UINT HitGroupRecordSize = 0;
+	UINT HitGroupRecordCount = 0;
 };

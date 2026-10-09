@@ -90,9 +90,11 @@
     <ClCompile Include="RenderGraph.cpp">
       <Filter>Source\Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="AccelerationStructure.cpp" />
     <ClCompile Include="Scene.cpp">
       <Filter>Source\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="AccelerationStructure.cpp">
+      <Filter>Source\RHI\D3D12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
