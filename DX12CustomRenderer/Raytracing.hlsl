@@ -8,6 +8,14 @@ cbuffer InverseViewMatrix : register(b0)
     float Padding;
 }
 
+cbuffer DirectionalLightConstant : register(b1)
+{
+    float3 Direction;
+    float Intensity;
+    float3 Color;
+    float AmbientIntensity;
+}
+
 struct Vertex
 {
     float3 Position;
@@ -70,5 +78,27 @@ void Miss(inout RayPayload Payload)
 [shader("closesthit")]
 void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttributes Attr)
 {
-    Payload.Color = float3(1.0f, 0.0f, 0.0f);
+    uint Primitive = PrimitiveIndex();
+    uint3 TriangleIndices = Indices.Load3(Primitive * 12);
+    
+    Vertex V0 = Vertices[TriangleIndices.x];
+    Vertex V1 = Vertices[TriangleIndices.y];
+    Vertex V2 = Vertices[TriangleIndices.z];
+    
+    float3 Barycentrics;
+    Barycentrics.yz = Attr.barycentrics;
+    Barycentrics.x = 1 - Barycentrics.y - Barycentrics.z;
+    
+    float3 ObjectNormal = normalize(V0.Normal * Barycentrics.x + V1.Normal * Barycentrics.y + V2.Normal * Barycentrics.z);
+    float3 WorldNormal = normalize(mul(ObjectNormal, (float3x3) transpose(WorldToObject3x4())));
+    
+    //WorldNormal = 0.5 * WorldNormal + 0.5;
+    
+    float3 WorldPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    float3 L = normalize(-Direction);
+    float NDotL = saturate(WorldNormal * L);
+    
+    float3 Diffuse = Color * Intensity * NDotL;
+    float3 Ambient = float3(1.0f, 1.0f, 1.0f) * AmbientIntensity;
+    Payload.Color = Ambient + Diffuse;
 }

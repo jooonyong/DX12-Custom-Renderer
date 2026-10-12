@@ -369,7 +369,8 @@ void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, Fra
 	CommandList->SetComputeRootDescriptorTable(0, RaytracingTLASSRV.GPU); //t0 TLAS SRV
 	CommandList->SetComputeRootDescriptorTable(1, RaytracingOutputUAV.GPU); //u0 Output UAV
 	CommandList->SetComputeRootConstantBufferView(2, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0 CameraData constantBuffer
-	
+	CommandList->SetComputeRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b1 DirectionalLight constantBuffer
+
 	D3D12_DISPATCH_RAYS_DESC DispatchDesc{};
 	DispatchDesc.RayGenerationShaderRecord.StartAddress = RayGenShaderTable->GetGPUVirtualAddress();
 	DispatchDesc.RayGenerationShaderRecord.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
@@ -2113,7 +2114,7 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	Ranges[1].RegisterSpace = 0;
 	Ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[3]{};
+	D3D12_ROOT_PARAMETER RootParameters[4]{};
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParameters[0].DescriptorTable.pDescriptorRanges = &Ranges[0];
@@ -2128,6 +2129,11 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	RootParameters[2].Descriptor.RegisterSpace = 0;
 	RootParameters[2].Descriptor.ShaderRegister = 0; //b0 CameraData constantBuffer
 	RootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParameters[3].Descriptor.RegisterSpace = 0;
+	RootParameters[3].Descriptor.ShaderRegister = 1; //b1 : Lighting ConstantBuffer
+	RootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
 	RootSignatureDesc.NumParameters = _countof(RootParameters);
