@@ -34,7 +34,7 @@ bool BottomLevelAccelerationStructure::BuildBLAS(D3D12Device* Device, D3D12Comma
 
 	for (int i = 0; i < SubMesh.size(); i++)
 	{
-		D3D12_RAYTRACING_GEOMETRY_DESC Geometry = GeometryDescs[i];
+		D3D12_RAYTRACING_GEOMETRY_DESC& Geometry = GeometryDescs[i];
 		Geometry.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
 		Geometry.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
 		Geometry.Triangles.VertexBuffer.StartAddress = Mesh->GetVertexBuffer()->GetGPUVirtualAddress();

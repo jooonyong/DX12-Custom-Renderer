@@ -2303,7 +2303,10 @@ bool Renderer::CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::C
 
 bool Renderer::CreateHitShaderTable(const Scene& Scene)
 {
-	HitGroupRecordCount = Scene.GetRenderObjects().size();
+	for (int i = 0; i < Scene.GetRenderObjects().size(); i++)
+	{
+		HitGroupRecordCount += Scene.GetRenderObjects()[i].Model->SubMeshes.size();
+	}
 
 	const UINT ShaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	const UINT LocalRootArgumentSize = sizeof(D3D12_GPU_VIRTUAL_ADDRESS) * 2;
@@ -2335,22 +2338,24 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene)
 		return false;
 	}
 
-	for (int i = 0; i < HitGroupRecordCount; i++)
+	UINT RecordIndex = 0;
+	for (const auto& Object : Scene.GetRenderObjects())
 	{
-		const RenderObject& Object = Scene.GetRenderObjects()[i];
-		uint8_t* Record = reinterpret_cast<uint8_t*>(MappedData) + i * HitGroupRecordSize;
+		for (const auto& Submesh : Object.Model->SubMeshes)
+		{
+			uint8_t* Record = reinterpret_cast<uint8_t*>(MappedData) + RecordIndex * HitGroupRecordSize;
+			// 0 ~ 31
+			memcpy(Record, RaytracingPipelineStateProperties->GetShaderIdentifier(L"HitGroup"), ShaderIdentifierSize);
 
-		// 0 ~ 31
-		memcpy(Record, RaytracingPipelineStateProperties->GetShaderIdentifier(L"HitGroup"), ShaderIdentifierSize);
-		
-		D3D12_GPU_VIRTUAL_ADDRESS VertexAddress = Object.Model->Mesh->GetVertexBuffer()->GetGPUVirtualAddress();
-		D3D12_GPU_VIRTUAL_ADDRESS IndexAddress = Object.Model->Mesh->GetIndexBuffer()->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS VertexAddress = Object.Model->Mesh->GetVertexBuffer()->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS IndexAddress = Object.Model->Mesh->GetIndexBuffer()->GetGPUVirtualAddress() + Submesh.IndexStart * sizeof(uint32_t);
+			// 32 ~ 39
+			memcpy(Record + ShaderIdentifierSize, &VertexAddress, sizeof(VertexAddress));
 
-		// 32 ~ 39
-		memcpy(Record + ShaderIdentifierSize, &VertexAddress, sizeof(VertexAddress));
-
-		// 40 ~ 47
-		memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress), &IndexAddress, sizeof(IndexAddress));
+			// 40 ~ 47
+			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress), &IndexAddress, sizeof(IndexAddress));
+			RecordIndex++;
+		}
 	}
 
 	HitGroupShaderTable->Unmap(0,nullptr);
