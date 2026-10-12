@@ -1962,7 +1962,7 @@ std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const std::string& File
 	Model->SubMeshes = LoadedModel.SubMeshes;
 	Model->Materials.reserve(LoadedModel.Materials.size());
 	Model->BLAS = std::make_unique<BottomLevelAccelerationStructure>();
-	if (!Model->BLAS->BuildBLAS(&Device, &CommandContext, Model->Mesh.get()))
+	if (!Model->BLAS->BuildBLAS(&Device, &CommandContext, Model->Mesh.get(),Model->SubMeshes))
 	{
 		return nullptr;
 	}

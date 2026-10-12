@@ -96,7 +96,7 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     
     float3 WorldPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     float3 L = normalize(-Direction);
-    float NDotL = saturate(WorldNormal * L);
+    float NDotL = saturate(dot(WorldNormal, L));
     
     float3 Diffuse = Color * Intensity * NDotL;
     float3 Ambient = float3(1.0f, 1.0f, 1.0f) * AmbientIntensity;

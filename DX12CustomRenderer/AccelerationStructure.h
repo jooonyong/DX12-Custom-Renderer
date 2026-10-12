@@ -17,7 +17,7 @@ protected:
 class BottomLevelAccelerationStructure : public AccelerationStructure
 {
 public:
-	bool BuildBLAS(D3D12Device* Device, D3D12CommandContext* CommandContext, Mesh* Mesh);
+	bool BuildBLAS(D3D12Device* Device, D3D12CommandContext* CommandContext, Mesh* Mesh, const std::vector<SubMeshData>& SubMesh);
 	
 	bool CreateResultBuffer(ID3D12Device* Device, UINT64 SizeInBytes) override;
 
