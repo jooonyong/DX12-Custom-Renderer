@@ -187,7 +187,7 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
 
     float G =  GeometrySmith(N,V, L, Roughness);
 
-    float3 F = FresnelSchlick( saturate(dot(H, V)), F0);
+    float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
     float3 Numerator = D * G * F;
 
     float Denominator = max( 4.0f * NdotV * NdotL, 0.001f);
