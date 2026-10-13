@@ -142,7 +142,7 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 H = normalize(V + L);
     
     float NDotL = saturate(dot(WorldNormal, L));
-    float NdotV = saturate(dot(WorldNormal, V));
+    float NDotV = saturate(dot(WorldNormal, V));
     
     float MaterialRoughness = max(Roughness, 0.04f);
     float MaterialMetallic = saturate(Metallic);
