@@ -79,7 +79,7 @@ float GeometrySmith(float3 N, float3 V, float3 L, float Roughness)
 
 float3 FresnelSchlick(float CosTheta, float3 F0)
 {
-    return F0 + (1.0f - F0) * (1.0f - CosTheta, 5.0f);
+    return F0 + (1.0f - F0) * pow(1.0f - CosTheta, 5.0f);
 }
 
 [shader("raygeneration")]
@@ -150,10 +150,10 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 Albedo = BaseColor.rgb;
     
     float3 F0 = float3(0.04f, 0.04f, 0.04f);
-    F0 = lerp(F0, Albedo, Metallic);
+    F0 = lerp(F0, Albedo, MaterialMetallic);
 
-    float D = DistributionGGX(WorldNormal, H, Roughness);
-    float G = GeometrySmith(WorldNormal, V, L, Roughness);
+    float D = DistributionGGX(WorldNormal, H, MaterialRoughness);
+    float G = GeometrySmith(WorldNormal, V, L, MaterialRoughness);
     float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
     
     float3 Numerator = D * G * F;
