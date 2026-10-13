@@ -360,6 +360,8 @@ void Renderer::RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameRe
 
 void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame)
 {
+	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
+
 	CommandList->SetPipelineState1(RaytracingStateObject.Get());
 	CommandList->SetComputeRootSignature(RaytracingGlobalRootSignature.Get());
 	
@@ -379,7 +381,7 @@ void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, Fra
 	DispatchDesc.MissShaderTable.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	DispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	
-	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable[CurrentIndex]->GetGPUVirtualAddress();
 	DispatchDesc.HitGroupTable.SizeInBytes = HitGroupRecordSize * HitGroupRecordCount;
 	DispatchDesc.HitGroupTable.StrideInBytes = HitGroupRecordSize;
 
@@ -462,10 +464,14 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		{
 			return;
 		}
-		if(!CreateHitShaderTable(MainScene))
+		for (UINT i = 0; i < BufferCount; i++)
 		{
-			return;
+			if (!CreateHitShaderTable(MainScene, i))
+			{
+				return;
+			}
 		}
+		
 	}
 	
 	Graph.AddPass("GBufferPass",
@@ -2301,15 +2307,16 @@ bool Renderer::CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::C
 	return true;
 }
 
-bool Renderer::CreateHitShaderTable(const Scene& Scene)
+bool Renderer::CreateHitShaderTable(const Scene& Scene, UINT FrameIndex)
 {
+	HitGroupRecordCount = 0;
 	for (int i = 0; i < Scene.GetRenderObjects().size(); i++)
 	{
 		HitGroupRecordCount += Scene.GetRenderObjects()[i].Model->SubMeshes.size();
 	}
 
 	const UINT ShaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	const UINT LocalRootArgumentSize = sizeof(D3D12_GPU_VIRTUAL_ADDRESS) * 2;
+	const UINT LocalRootArgumentSize = sizeof(D3D12_GPU_VIRTUAL_ADDRESS) * 3;
 
 	HitGroupRecordSize = (ShaderIdentifierSize + LocalRootArgumentSize + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1) & ~(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1);
 	D3D12_HEAP_PROPERTIES HeapProp{};
@@ -2325,14 +2332,14 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene)
 	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
 	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr, IID_PPV_ARGS(&HitGroupShaderTable));
+		nullptr, IID_PPV_ARGS(&HitGroupShaderTable[FrameIndex]));
 	if (FAILED(Result))
 	{
 		return false;
 	}
 
 	void* MappedData;
-	Result = HitGroupShaderTable->Map(0, nullptr, &MappedData);
+	Result = HitGroupShaderTable[FrameIndex]->Map(0, nullptr, &MappedData);
 	if (FAILED(Result))
 	{
 		return false;
@@ -2349,23 +2356,35 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene)
 
 			D3D12_GPU_VIRTUAL_ADDRESS VertexAddress = Object.Model->Mesh->GetVertexBuffer()->GetGPUVirtualAddress();
 			D3D12_GPU_VIRTUAL_ADDRESS IndexAddress = Object.Model->Mesh->GetIndexBuffer()->GetGPUVirtualAddress() + Submesh.IndexStart * sizeof(uint32_t);
+			
+			Material* CurrentMaterial = DefaultMaterial.get();
+			if (Submesh.MaterialIndex != InvalidMaterialIndex && Submesh.MaterialIndex < Object.Model->Materials.size())
+			{
+				CurrentMaterial = Object.Model->Materials[Submesh.MaterialIndex].get();
+			}
+			D3D12_GPU_VIRTUAL_ADDRESS MaterialConstantAddress = CurrentMaterial->GetConstantBufferGPUAddress(FrameIndex);
+
 			// 32 ~ 39
 			memcpy(Record + ShaderIdentifierSize, &VertexAddress, sizeof(VertexAddress));
 
 			// 40 ~ 47
 			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress), &IndexAddress, sizeof(IndexAddress));
+			
+			//48~55
+			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress) + sizeof(IndexAddress), &MaterialConstantAddress, sizeof(MaterialConstantAddress));
+
 			RecordIndex++;
 		}
 	}
 
-	HitGroupShaderTable->Unmap(0,nullptr);
+	HitGroupShaderTable[FrameIndex]->Unmap(0, nullptr);
 
 	return true;
 }
 
 bool Renderer::CreateLocalRootSignature()
 {
-	D3D12_ROOT_PARAMETER RootParams[2]{};
+	D3D12_ROOT_PARAMETER RootParams[3]{};
 	RootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
 	RootParams[0].Descriptor.RegisterSpace = 0;
 	RootParams[0].Descriptor.ShaderRegister = 1; // t1 : Vertices
@@ -2375,6 +2394,11 @@ bool Renderer::CreateLocalRootSignature()
 	RootParams[1].Descriptor.RegisterSpace = 0;	
 	RootParams[1].Descriptor.ShaderRegister = 2; // t2 : Indices
 	RootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParams[2].Descriptor.RegisterSpace = 0;
+	RootParams[2].Descriptor.ShaderRegister = 2; //b2 : Material Constant Buffer;
+	RootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
 	RootSignatureDesc.NumParameters = _countof(RootParams);

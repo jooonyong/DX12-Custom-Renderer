@@ -16,6 +16,14 @@ cbuffer DirectionalLightConstant : register(b1)
     float AmbientIntensity;
 }
 
+cbuffer MaterialConstants : register(b2)
+{
+    float4 BaseColor;
+    float Roughness;
+    float Metallic;
+    float2 MaterialPadding;
+};
+
 struct Vertex
 {
     float3 Position;
@@ -92,13 +100,13 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 ObjectNormal = normalize(V0.Normal * Barycentrics.x + V1.Normal * Barycentrics.y + V2.Normal * Barycentrics.z);
     float3 WorldNormal = normalize(mul(ObjectNormal, (float3x3) transpose(WorldToObject3x4())));
     
-    //WorldNormal = 0.5 * WorldNormal + 0.5;
-    
     float3 WorldPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     float3 L = normalize(-Direction);
     float NDotL = saturate(dot(WorldNormal, L));
     
-    float3 Diffuse = Color * Intensity * NDotL;
-    float3 Ambient = float3(1.0f, 1.0f, 1.0f) * AmbientIntensity;
+    float3 Albedo = BaseColor.rgb;
+    float3 Diffuse = Albedo * Color * Intensity * NDotL;
+    float3 Ambient = Albedo * AmbientIntensity;
+    
     Payload.Color = Ambient + Diffuse;
 }
