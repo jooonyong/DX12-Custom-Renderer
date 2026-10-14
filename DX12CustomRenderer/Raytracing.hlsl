@@ -54,6 +54,10 @@ struct Attributes
 	float2 Barycentrics;
 };
 
+struct ShadowPayload
+{
+    uint Occluded;
+};
 
 float DistributionGGX(float3 N, float3 H, float Roughness)
 {
@@ -122,7 +126,7 @@ void RayGen()
 [shader("miss")]
 void Miss(inout RayPayload Payload)
 {
-    Payload.Color = float3(0.1f, 0.2f, 0.4f);
+    Payload.Color = float3(1.0f, 0.2f, 0.4f);
 }
 
 [shader("closesthit")]
@@ -146,11 +150,32 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 ObjectNormal = normalize(V0.Normal * Barycentrics.x + V1.Normal * Barycentrics.y + V2.Normal * Barycentrics.z);
     float3 WorldNormal = normalize(mul(ObjectNormal, (float3x3) transpose(WorldToObject3x4())));
     
+    float3 ObjectTangent = V0.Tangent.xyz * Barycentrics.x + V1.Tangent.xyz * Barycentrics.y + V2.Tangent.xyz * Barycentrics.z;
+    float3 WorldTangent = mul((float3x3) ObjectToWorld3x4(), ObjectTangent);
+    
+    //그램슈미트 직교화
+    WorldTangent = normalize(WorldTangent - WorldNormal * dot(WorldTangent, WorldNormal));
+    float3 Bitangent = normalize(cross(WorldNormal, WorldTangent)) * V0.Tangent.w;
+    float3 NormalSample = NormalTexture.SampleLevel(MaterialSampler, UV, 0.0f).xyz;
+    NormalSample = NormalSample * 2.0f - 1.0f;
+    
+    float3 NormalWS = normalize(NormalSample.x * WorldTangent + NormalSample.y * Bitangent + NormalSample.z * WorldNormal);
+    WorldNormal = NormalWS;
+    
     float3 WorldPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    
     float3 L = normalize(-Direction);
     float3 V = normalize(CameraPosition - WorldPosition);
     float3 H = normalize(V + L);
     
+    float3 WorldEdge1 = mul((float3x3) ObjectToWorld3x4(), V1.Position - V0.Position);
+    float3 WorldEdge2 = mul((float3x3) ObjectToWorld3x4(), V2.Position - V0.Position);
+    float3 WorldGeometricNormal = normalize(cross(WorldEdge1, WorldEdge2));
+    
+    float3 OffsetNormal = dot(WorldGeometricNormal, L) > 0 ? WorldGeometricNormal : -WorldGeometricNormal;
+    float ShadowBias = 0.4f;
+    float3 ShadowOrigin = WorldPosition + ShadowBias * OffsetNormal;
+     
     float NDotL = saturate(dot(WorldNormal, L));
     float NDotV = saturate(dot(WorldNormal, V));
     
@@ -173,7 +198,7 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 Specular = Numerator / Denominator;
        
     float3 kS = F;
-    float3 kD = (1.0f - kS) * (1.0f - Metallic);
+    float3 kD = (1.0f - kS) * (1.0f - MaterialMetallic);
 
     float3 Diffuse = kD * Albedo / PI;
     float3 Radiance = Color * Intensity;
@@ -182,4 +207,18 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 Ambient = Albedo * AmbientIntensity;
     
     Payload.Color = Ambient + DirectLighting;
+}
+
+[shader("closesthit")]
+void ShadowClosestHit(inout ShadowPayload Payload, in BuiltInTriangleIntersectionAttributes Attr)
+{
+    //장애물을 맞혔다는 결과 기록
+    Payload.Occluded = 1;
+}
+
+[shader("miss")]
+void ShadowMiss(inout ShadowPayload Payload)
+{
+    // TODO: 장애물이 없다는 결과 기록
+    Payload.Occluded = 0;
 }

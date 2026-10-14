@@ -2183,11 +2183,13 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 
 bool Renderer::CreateRaytracingStateObject()
 {
-	D3D12_EXPORT_DESC Exports[3] =
+	D3D12_EXPORT_DESC Exports[5] =
 	{
 		{ L"RayGen", nullptr,D3D12_EXPORT_FLAG_NONE},
 		{ L"Miss", nullptr, D3D12_EXPORT_FLAG_NONE},
-		{ L"ClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE}
+		{ L"ClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE},
+		{ L"ShadowClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE},
+		{ L"ShadowMiss", nullptr, D3D12_EXPORT_FLAG_NONE}
 	};
 
 	D3D12_DXIL_LIBRARY_DESC DXILLibraryDesc{};
@@ -2203,12 +2205,19 @@ bool Renderer::CreateRaytracingStateObject()
 	HitGroupDesc.IntersectionShaderImport = nullptr;
 	HitGroupDesc.Type = D3D12_HIT_GROUP_TYPE_TRIANGLES;
 
+	D3D12_HIT_GROUP_DESC ShadowHitGroupDesc{};
+	ShadowHitGroupDesc.HitGroupExport = L"ShadowHitGroup";
+	ShadowHitGroupDesc.ClosestHitShaderImport = L"ShadowClosestHit";
+	ShadowHitGroupDesc.AnyHitShaderImport = nullptr;
+	ShadowHitGroupDesc.IntersectionShaderImport = nullptr;
+	ShadowHitGroupDesc.Type = D3D12_HIT_GROUP_TYPE_TRIANGLES;
+
 	D3D12_RAYTRACING_SHADER_CONFIG ShaderConfig{};
 	ShaderConfig.MaxPayloadSizeInBytes = sizeof(float) * 3;
 	ShaderConfig.MaxAttributeSizeInBytes = sizeof(float) * 2;
 	
 	D3D12_RAYTRACING_PIPELINE_CONFIG PipelineConfig{};
-	PipelineConfig.MaxTraceRecursionDepth = 1;
+	PipelineConfig.MaxTraceRecursionDepth = 2;
 
 	D3D12_GLOBAL_ROOT_SIGNATURE GlobalRootSignature{};
 	GlobalRootSignature.pGlobalRootSignature = RaytracingGlobalRootSignature.Get();
@@ -2216,7 +2225,7 @@ bool Renderer::CreateRaytracingStateObject()
 	D3D12_LOCAL_ROOT_SIGNATURE LocalRootSignature{};
 	LocalRootSignature.pLocalRootSignature = RaytracingLocalRootSignature.Get();
 
-	D3D12_STATE_SUBOBJECT Subobjects[7]{};
+	D3D12_STATE_SUBOBJECT Subobjects[8]{};
 	Subobjects[0].Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
 	Subobjects[0].pDesc = &DXILLibraryDesc;
 
@@ -2246,6 +2255,9 @@ bool Renderer::CreateRaytracingStateObject()
 
 	Subobjects[6].Type = D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION;
 	Subobjects[6].pDesc = &Association;
+
+	Subobjects[7].Type = D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP;
+	Subobjects[7].pDesc = &ShadowHitGroupDesc;
 
 	D3D12_STATE_OBJECT_DESC StateObjectDesc{};
 	StateObjectDesc.NumSubobjects = _countof(Subobjects);

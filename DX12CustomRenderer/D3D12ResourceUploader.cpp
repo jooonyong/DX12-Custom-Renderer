@@ -158,7 +158,7 @@ bool D3D12ResourceUploader::UploadTexture(const uint8_t* Pixels, UINT Width, UIN
 	Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	Barrier.Transition.pResource = OutTexture.Get();
 	Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-	Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	Barrier.Transition.StateAfter = FinalState;
 	Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
 	CommandContext->GetCommandList()->ResourceBarrier(1, &Barrier);
