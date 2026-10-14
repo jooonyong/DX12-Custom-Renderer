@@ -1858,7 +1858,7 @@ bool Renderer::CreateMappedConstantBuffer(uint64_t DataSize, Microsoft::WRL::Com
 std::shared_ptr<Texture> Renderer::CreateTexture(const ImageData& Image, TextureColorSpace ColorSpace)
 {
 	Microsoft::WRL::ComPtr<ID3D12Resource> TextureResource;
-	if (!ResourceUploader.UploadTexture(Image.Pixels.data(), Image.Width, Image.Height, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, TextureResource))
+	if (!ResourceUploader.UploadTexture(Image.Pixels.data(), Image.Width, Image.Height, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, TextureResource))
 	{
 		return nullptr;
 	}
@@ -2141,11 +2141,26 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	RootParameters[3].Descriptor.ShaderRegister = 1; //b1 : Lighting ConstantBuffer
 	RootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
+	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.MipLODBias = 0.0f;
+	SamplerDesc.MaxAnisotropy = 1;
+	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	SamplerDesc.MinLOD = 0.0f;
+	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	SamplerDesc.ShaderRegister = 0; ///s0
+	SamplerDesc.RegisterSpace = 0;
+	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
 	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
 	RootSignatureDesc.NumParameters = _countof(RootParameters);
 	RootSignatureDesc.pParameters = RootParameters;
-	RootSignatureDesc.NumStaticSamplers = 0;
-	RootSignatureDesc.pStaticSamplers = nullptr;
+	RootSignatureDesc.NumStaticSamplers = 1;
+	RootSignatureDesc.pStaticSamplers = &SamplerDesc;
 	RootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 	
 	Microsoft::WRL::ComPtr<ID3DBlob> SignatureBlob;
@@ -2316,8 +2331,9 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene, UINT FrameIndex)
 	}
 
 	const UINT ShaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	const UINT LocalRootArgumentSize = sizeof(D3D12_GPU_VIRTUAL_ADDRESS) * 3;
+	const UINT LocalRootArgumentSize = sizeof(D3D12_GPU_VIRTUAL_ADDRESS) * 3 + sizeof(D3D12_GPU_DESCRIPTOR_HANDLE) * 3; //VertexBuffer, IndexBuffer, MaterialConstant + TextureDescriptorHandle(Basecolor, MRTexture, Normal)
 
+	//32byte Alignment
 	HitGroupRecordSize = (ShaderIdentifierSize + LocalRootArgumentSize + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1) & ~(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1);
 	D3D12_HEAP_PROPERTIES HeapProp{};
 	HeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -2373,6 +2389,20 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene, UINT FrameIndex)
 			//48~55
 			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress) + sizeof(IndexAddress), &MaterialConstantAddress, sizeof(MaterialConstantAddress));
 
+			D3D12_GPU_DESCRIPTOR_HANDLE BaseColorHandle = CurrentMaterial->GetAlbedoTexture()->GetSRV().GPU;
+			D3D12_GPU_DESCRIPTOR_HANDLE MRTexture = CurrentMaterial->GetMetallicRoughnessTexture()->GetSRV().GPU;
+			D3D12_GPU_DESCRIPTOR_HANDLE NormalTexture = CurrentMaterial->GetNormalTexture()->GetSRV().GPU;
+			
+			//56~63
+			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress) + sizeof(IndexAddress) + sizeof(MaterialConstantAddress),
+				&BaseColorHandle, sizeof(BaseColorHandle));
+			//64~71
+			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress) + sizeof(IndexAddress) + sizeof(MaterialConstantAddress) + sizeof(BaseColorHandle),
+				&MRTexture, sizeof(MRTexture));
+			//72~79
+			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress) + sizeof(IndexAddress) + sizeof(MaterialConstantAddress) + sizeof(BaseColorHandle) + sizeof(MRTexture),
+				&NormalTexture, sizeof(NormalTexture));
+
 			RecordIndex++;
 		}
 	}
@@ -2384,7 +2414,26 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene, UINT FrameIndex)
 
 bool Renderer::CreateLocalRootSignature()
 {
-	D3D12_ROOT_PARAMETER RootParams[3]{};
+	D3D12_DESCRIPTOR_RANGE TextureRanges[3]{};
+	TextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	TextureRanges[0].NumDescriptors = 1;
+	TextureRanges[0].BaseShaderRegister = 3; // t3
+	TextureRanges[0].RegisterSpace = 0;
+	TextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	TextureRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	TextureRanges[1].NumDescriptors = 1;
+	TextureRanges[1].BaseShaderRegister = 4; //t4
+	TextureRanges[1].RegisterSpace = 0;
+	TextureRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	TextureRanges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	TextureRanges[2].NumDescriptors = 1;
+	TextureRanges[2].BaseShaderRegister = 5; //t5
+	TextureRanges[2].RegisterSpace = 0;
+	TextureRanges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParams[6]{};
 	RootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
 	RootParams[0].Descriptor.RegisterSpace = 0;
 	RootParams[0].Descriptor.ShaderRegister = 1; // t1 : Vertices
@@ -2399,6 +2448,21 @@ bool Renderer::CreateLocalRootSignature()
 	RootParams[2].Descriptor.RegisterSpace = 0;
 	RootParams[2].Descriptor.ShaderRegister = 2; //b2 : Material Constant Buffer;
 	RootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParams[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParams[3].DescriptorTable.NumDescriptorRanges = 1;
+	RootParams[3].DescriptorTable.pDescriptorRanges = &TextureRanges[0];
+	RootParams[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParams[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParams[4].DescriptorTable.NumDescriptorRanges = 1;
+	RootParams[4].DescriptorTable.pDescriptorRanges = &TextureRanges[1];
+	RootParams[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParams[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParams[5].DescriptorTable.NumDescriptorRanges = 1;
+	RootParams[5].DescriptorTable.pDescriptorRanges = &TextureRanges[2];
+	RootParams[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootSignatureDesc{};
 	RootSignatureDesc.NumParameters = _countof(RootParams);

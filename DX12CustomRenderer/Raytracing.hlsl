@@ -1,6 +1,12 @@
 RaytracingAccelerationStructure SceneAS : register(t0);
 RWTexture2D<float4> OutputTexture : register(u0);
 
+Texture2D<float4> BaseColorTexture : register(t3);
+Texture2D<float4> MetallicRoughnessTexture : register(t4);
+Texture2D<float4> NormalTexture : register(t5);
+
+SamplerState MaterialSampler : register(s0);
+
 static const float PI = 3.1415926535f;
 
 cbuffer InverseViewMatrix : register(b0)
@@ -133,6 +139,10 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     Barycentrics.yz = Attr.barycentrics;
     Barycentrics.x = 1 - Barycentrics.y - Barycentrics.z;
     
+    float2 UV = V0.UV * Barycentrics.x + V1.UV * Barycentrics.y + V2.UV * Barycentrics.z;
+    float4 BaseColorSample = BaseColorTexture.SampleLevel(MaterialSampler,UV, 0.0f);
+    float4 MRSample = MetallicRoughnessTexture.SampleLevel(MaterialSampler, UV, 0.0f);
+    
     float3 ObjectNormal = normalize(V0.Normal * Barycentrics.x + V1.Normal * Barycentrics.y + V2.Normal * Barycentrics.z);
     float3 WorldNormal = normalize(mul(ObjectNormal, (float3x3) transpose(WorldToObject3x4())));
     
@@ -144,10 +154,10 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float NDotL = saturate(dot(WorldNormal, L));
     float NDotV = saturate(dot(WorldNormal, V));
     
-    float MaterialRoughness = max(Roughness, 0.04f);
-    float MaterialMetallic = saturate(Metallic);
+    float MaterialRoughness = max(Roughness * MRSample.g, 0.04f);
+    float MaterialMetallic = saturate(Metallic * MRSample.b);
     
-    float3 Albedo = BaseColor.rgb;
+    float3 Albedo = BaseColor.rgb * BaseColorSample.rgb;
     
     float3 F0 = float3(0.04f, 0.04f, 0.04f);
     F0 = lerp(F0, Albedo, MaterialMetallic);
