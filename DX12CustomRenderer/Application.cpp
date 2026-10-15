@@ -29,7 +29,7 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 
 	RenderObject Object2;
 	Object2.Model = Model;
-	DirectX::XMStoreFloat4x4(&Object2.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(5.0f, 0.0f, 0.0f));
+	DirectX::XMStoreFloat4x4(&Object2.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(-2.0f, -1.0f, 2.0f));
 
 	MainScene.AddRenderObject(Object1);
 	MainScene.AddRenderObject(Object2);

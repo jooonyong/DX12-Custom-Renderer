@@ -119,7 +119,7 @@ void RayGen()
     Payload.Color = float3(0.0f, 0.0f, 0.0f);
 
     //RecordIndex = InstanceOffset + GeometryIndex * GeometryMultiplier + RayOffset
-    TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 1, 2, 0, Ray, Payload); //RayContributionToHitGroupIndex 0, MultiplierForGeometryContributionToHitGroupIndex 2, MissshaderIndex 0
+    TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, Ray, Payload); //HitOffset 0, GeometryMultiplier 2, MissshaderIndex 0
 
     OutputTexture[Index] = float4(Payload.Color, 1.0f);
 }
@@ -174,7 +174,7 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 WorldGeometricNormal = normalize(cross(WorldEdge1, WorldEdge2));
     
     float3 OffsetNormal = dot(WorldGeometricNormal, L) > 0 ? WorldGeometricNormal : -WorldGeometricNormal;
-    float ShadowBias = 0.4f;
+    float ShadowBias = 0.001f;
     float3 ShadowOrigin = WorldPosition + ShadowBias * OffsetNormal;
      
     float NDotL = saturate(dot(WorldNormal, L));
@@ -207,7 +207,18 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     
     float3 Ambient = Albedo * AmbientIntensity;
     
-    Payload.Color = Ambient + DirectLighting;
+    RayDesc ShadowRayDesc;
+    ShadowRayDesc.Direction = L;
+    ShadowRayDesc.Origin = ShadowOrigin;
+    ShadowRayDesc.TMin = 0.001f;
+    ShadowRayDesc.TMax = 10000.0f;
+    
+    ShadowPayload ShadowInfo;
+    ShadowInfo.Occluded = 0;
+    
+    TraceRay(SceneAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1, 2, 1, ShadowRayDesc, ShadowInfo);
+    
+    Payload.Color = Ambient + DirectLighting * (1 - ShadowInfo.Occluded);
 }
 
 [shader("closesthit")]
