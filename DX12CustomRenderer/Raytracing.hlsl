@@ -118,7 +118,7 @@ void RayGen()
     RayPayload Payload;
     Payload.Color = float3(0.0f, 0.0f, 0.0f);
 
-    TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 1, 0, Ray, Payload);
+    TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, Ray, Payload);
 
     OutputTexture[Index] = float4(Payload.Color, 1.0f);
 }

@@ -378,7 +378,7 @@ void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, Fra
 	DispatchDesc.RayGenerationShaderRecord.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
 	DispatchDesc.MissShaderTable.StartAddress = MissShaderTable->GetGPUVirtualAddress();
-	DispatchDesc.MissShaderTable.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	DispatchDesc.MissShaderTable.SizeInBytes = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
 	DispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	
 	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable[CurrentIndex]->GetGPUVirtualAddress();
@@ -2281,8 +2281,9 @@ bool Renderer::CreateShaderBindingTable()
 {
 	void* RayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"RayGen");
 	void* MissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"Miss");
-	
-	if(!RayGenIdentifier || !MissIdentifier)
+	void* ShadowMissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"ShadowMiss");
+
+	if(!RayGenIdentifier || !MissIdentifier || !ShadowMissIdentifier)
 	{
 		return false;
 	}
@@ -2291,11 +2292,14 @@ bool Renderer::CreateShaderBindingTable()
 	{
 		return false;
 	}
-	if (!CreateShaderTable(MissIdentifier, MissShaderTable))
+	/*if (!CreateShaderTable(MissIdentifier, MissShaderTable))
+	{
+		return false;
+	}*/
+	if (!CreateMissShaderTable(MissIdentifier, ShadowMissIdentifier))
 	{
 		return false;
 	}
-	
 	return true;
 }
 
@@ -2334,12 +2338,49 @@ bool Renderer::CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::C
 	return true;
 }
 
+bool Renderer::CreateMissShaderTable(const void* MissIdentifier, const void* ShadowMissIdentifier)
+{
+	UINT BufferSize = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+	D3D12_RESOURCE_DESC BufferDesc{};
+	BufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	BufferDesc.Width = BufferSize;
+	BufferDesc.Height = 1;
+	BufferDesc.MipLevels = 1;
+	BufferDesc.DepthOrArraySize = 1;
+	BufferDesc.SampleDesc.Count = 1;
+	BufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, IID_PPV_ARGS(&MissShaderTable));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	void* MappedData;
+	Result = MissShaderTable->Map(0, nullptr, &MappedData);
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	memcpy(MappedData, MissIdentifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+	memcpy(reinterpret_cast<uint8_t*>(MappedData) + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, ShadowMissIdentifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+	MissShaderTable->Unmap(0, nullptr);
+
+	return true;
+}
+
 bool Renderer::CreateHitShaderTable(const Scene& Scene, UINT FrameIndex)
 {
 	HitGroupRecordCount = 0;
 	for (int i = 0; i < Scene.GetRenderObjects().size(); i++)
 	{
-		HitGroupRecordCount += Scene.GetRenderObjects()[i].Model->SubMeshes.size();
+		HitGroupRecordCount += Scene.GetRenderObjects()[i].Model->SubMeshes.size() * 2; //Camera용 Record + Shadow용 Record 2개라 *2
 	}
 
 	const UINT ShaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
@@ -2415,6 +2456,11 @@ bool Renderer::CreateHitShaderTable(const Scene& Scene, UINT FrameIndex)
 			memcpy(Record + ShaderIdentifierSize + sizeof(VertexAddress) + sizeof(IndexAddress) + sizeof(MaterialConstantAddress) + sizeof(BaseColorHandle) + sizeof(MRTexture),
 				&NormalTexture, sizeof(NormalTexture));
 
+			RecordIndex++;
+			Record = reinterpret_cast<uint8_t*>(MappedData) + RecordIndex * HitGroupRecordSize;
+			// 96 ~ 127
+			memcpy(Record, RaytracingPipelineStateProperties->GetShaderIdentifier(L"ShadowHitGroup"), ShaderIdentifierSize);
+			//128 ~ 191 Padding
 			RecordIndex++;
 		}
 	}

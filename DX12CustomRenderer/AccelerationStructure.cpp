@@ -129,7 +129,7 @@ bool TopLevelAccelerationStructure::BuildTLAS(D3D12Device* Device, D3D12CommandC
 		Instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
 		Instance.AccelerationStructure = Object.Model->BLAS->GetBLASBuffer()->GetGPUVirtualAddress();
 
-		HitGroupOffset += static_cast<UINT>(Object.Model->SubMeshes.size());
+		HitGroupOffset += static_cast<UINT>(Object.Model->SubMeshes.size()) * 2;
 
 		DirectX::XMFLOAT4X4 World;
 		DirectX::XMMATRIX M = DirectX::XMLoadFloat4x4(&Object.World);

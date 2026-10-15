@@ -150,6 +150,7 @@ public:
 
 	bool CreateShaderBindingTable();
 	bool CreateShaderTable(const void* ShaderIdentifier, Microsoft::WRL::ComPtr<ID3D12Resource>& OutBuffer);
+	bool CreateMissShaderTable(const void* MissIdentifier, const void* ShadowMissIdentifier);
 	bool CreateHitShaderTable(const Scene& Scene, UINT FrameIndex);
 
 	bool CreateLocalRootSignature();
