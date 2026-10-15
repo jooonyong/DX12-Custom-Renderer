@@ -20,7 +20,7 @@ public:
     void UpdateDirection();
 
 private:
-    DirectX::XMFLOAT3 Position = { 0.0f, 0.0f, -3.0f };
+    DirectX::XMFLOAT3 Position = { 0.0f, 3.0f, -7.0f };
     DirectX::XMFLOAT3 Forward = { 0.0f, 0.0f, 1.0f };
     DirectX::XMFLOAT3 Up = { 0.0f, 1.0f, 0.0f };
     DirectX::XMFLOAT3 Right = { 1.0f, 0.0f, 0.0f };

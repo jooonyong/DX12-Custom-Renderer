@@ -139,6 +139,7 @@ public:
 
 	//Application 호출용 임시 함수
 	std::shared_ptr<RenderModel> CreateRenderModel(const std::string& FilePath);
+	std::shared_ptr<RenderModel> CreateRenderModel(const ModelData& Data);
 
 	void BuildDrawCommand(const Scene& Scene, std::vector<DrawCommand>& OutCommands);
 

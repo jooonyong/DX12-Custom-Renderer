@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "GeometryGenerator.h"
 
 bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 {
@@ -23,16 +24,43 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 		return false;
 	}
 
+	ModelData CubeData{};
+	CubeData.Mesh = GeometryGenerator::CreateCube();
+	
+	SubMeshData CubeSubmesh{};
+	CubeSubmesh.IndexStart = 0;
+	CubeSubmesh.IndexCount = static_cast<uint32_t>(CubeData.Mesh.Indices.size());
+	CubeSubmesh.MaterialIndex = 0;
+	CubeData.SubMeshes.push_back(CubeSubmesh);
+
+	MaterialData CubeMaterial{};
+	CubeMaterial.BaseColor = { 0.5f, 0.5f, 0.5f, 1.0f };
+	CubeMaterial.Roughness = 0.7f;
+	CubeMaterial.Metallic = 0.0f;
+	CubeData.Materials.push_back(CubeMaterial);
+
+	auto CubeModel = Renderer.CreateRenderModel(CubeData);
+
 	RenderObject Object1;
 	Object1.Model = Model;
-	DirectX::XMStoreFloat4x4(&Object1.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(-5.0f, 0.0f, 0.0f));
+	DirectX::XMStoreFloat4x4(&Object1.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(-5.0f, 3.0f, -2.0f));
 
 	RenderObject Object2;
 	Object2.Model = Model;
-	DirectX::XMStoreFloat4x4(&Object2.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(-2.0f, -1.0f, 2.0f));
+	DirectX::XMStoreFloat4x4(&Object2.World, DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f) * DirectX::XMMatrixTranslation(-2.0f, 3.0f, 5.0f));
+	
+	RenderObject Object3;
+	Object3.Model = CubeModel;
+	DirectX::XMStoreFloat4x4(&Object3.World, DirectX::XMMatrixScaling(32.0f, 0.1f, 32.0f) * DirectX::XMMatrixTranslation(0.0f, -0.05f, 0.0f));
+
+	RenderObject Object4;
+	Object4.Model = CubeModel;
+	DirectX::XMStoreFloat4x4(&Object4.World, DirectX::XMMatrixScaling(2.0f, 2.0f, 2.0f) * DirectX::XMMatrixTranslation(0.0f, 1.0, 0.0f));
 
 	MainScene.AddRenderObject(Object1);
 	MainScene.AddRenderObject(Object2);
+	MainScene.AddRenderObject(Object3);
+	MainScene.AddRenderObject(Object4);
 
 	bRunning = true;
 	return true;

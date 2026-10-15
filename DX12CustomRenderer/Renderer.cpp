@@ -1952,28 +1952,33 @@ void Renderer::UpdateViewport(UINT Width, UINT Height)
 
 std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const std::string& FilePath)
 {
-	if (!ResourceUploader.Begin())
-	{
-		return nullptr;
-	}
-
 	ModelData LoadedModel{};
 	if (!ModelLoader.Load(FilePath, LoadedModel))
 	{
 		return nullptr;
 	}
 
-	std::shared_ptr<RenderModel> Model = std::make_shared<RenderModel>();
-	Model->Mesh = CreateMesh(LoadedModel.Mesh);
-	Model->SubMeshes = LoadedModel.SubMeshes;
-	Model->Materials.reserve(LoadedModel.Materials.size());
-	Model->BLAS = std::make_unique<BottomLevelAccelerationStructure>();
-	if (!Model->BLAS->BuildBLAS(&Device, &CommandContext, Model->Mesh.get(),Model->SubMeshes))
+	return CreateRenderModel(LoadedModel);
+}
+
+std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const ModelData& Data)
+{
+	if (!ResourceUploader.Begin())
 	{
 		return nullptr;
 	}
 
-	for (const MaterialData& MaterialData : LoadedModel.Materials)
+	std::shared_ptr<RenderModel> Model = std::make_shared<RenderModel>();
+	Model->Mesh = CreateMesh(Data.Mesh);
+	Model->SubMeshes = Data.SubMeshes;
+	Model->Materials.reserve(Data.Materials.size());
+	Model->BLAS = std::make_unique<BottomLevelAccelerationStructure>();
+	if (!Model->BLAS->BuildBLAS(&Device, &CommandContext, Model->Mesh.get(), Model->SubMeshes))
+	{
+		return nullptr;
+	}
+
+	for (const MaterialData& MaterialData : Data.Materials)
 	{
 		std::shared_ptr<Texture> ModelTexture = DefaultWhiteTexture;
 		std::shared_ptr<Texture> MRTexture = DefaultWhiteTexture;
