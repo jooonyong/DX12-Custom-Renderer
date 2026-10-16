@@ -473,62 +473,68 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		}
 		
 	}
+	if (CurrentRenderMode == RenderMode::E_Raster)
+	{
+		Graph.AddPass("GBufferPass",
+			{
+				{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
+			}
+		);
+		Graph.AddPass("ShadowPass",
+			{
+				{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
+			}
+		);
+		Graph.AddPass("DeferredLightingPass",
+			{
+				{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
+			}
+		);
+	}
+	else if (CurrentRenderMode == RenderMode::E_Raytracing)
+	{
+		Graph.AddPass("RaytracingPass",
+			{
+				{ RaytracingOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
+				Renderer::RenderRaytracingPass(RaytracingCommandList, CurrentFrame);
+			}
+		);
+		Graph.AddPass("CopyRaytracingOutput",
+			{
+				{ RaytracingOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, RenderGraphAccess::Read},
+				{ SceneColor.Get(), D3D12_RESOURCE_STATE_COPY_DEST, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				CommandList->CopyResource(SceneColor.Get(), RaytracingOutput.Get());
+			}
+		);
+	}
 	
-	Graph.AddPass("GBufferPass",
-		{
-			{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
-			{ GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
-			{ GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
-			{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
-		},
-		[&](ID3D12GraphicsCommandList* CommandList)
-		{
-			Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
-		}
-	);
-	Graph.AddPass("ShadowPass",
-		{
-			{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
-		},
-		[&](ID3D12GraphicsCommandList* CommandList)
-		{
-			Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
-		}
-	);
-	Graph.AddPass("DeferredLightingPass",
-		{
-			{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-			{ GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-			{ GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-			{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-			{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-			{ SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write}
-		},
-		[&](ID3D12GraphicsCommandList* CommandList)
-		{
-			Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
-		}
-	);
-	Graph.AddPass("RaytracingPass",
-		{
-			{ RaytracingOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write}
-		},
-		[&](ID3D12GraphicsCommandList* CommandList)
-		{
-			ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
-			Renderer::RenderRaytracingPass(RaytracingCommandList, CurrentFrame);
-		}
-	);
-	Graph.AddPass("CopyRaytracingOutput",
-		{
-			{ RaytracingOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, RenderGraphAccess::Read},
-			{ SceneColor.Get(), D3D12_RESOURCE_STATE_COPY_DEST, RenderGraphAccess::Write}
-		},
-		[&](ID3D12GraphicsCommandList* CommandList)
-		{
-			CommandList->CopyResource(SceneColor.Get(), RaytracingOutput.Get());
-		}
-	);
 	Graph.AddPass("ToneMapping",
 		{
 			{ SceneColor.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read}

@@ -32,6 +32,12 @@ class Camera;
 class Material;
 class TopLevelAccelerationStructure;
 
+enum class RenderMode
+{
+	E_Raster,
+	E_Raytracing
+};
+
 struct FrameResource
 {
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator = nullptr;
@@ -92,6 +98,8 @@ class Renderer
 public:
 	Renderer();
 	~Renderer();
+
+	void SetRenderMode(RenderMode Mode) { CurrentRenderMode = Mode; }
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
@@ -157,6 +165,8 @@ public:
 	bool CreateLocalRootSignature();
 
 private:
+	RenderMode CurrentRenderMode = RenderMode::E_Raster;
+
 	D3D12Device Device;
 	D3D12CommandQueue CommandQueue;
 	D3D12CommandContext CommandContext;
