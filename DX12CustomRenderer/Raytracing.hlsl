@@ -5,6 +5,13 @@ Texture2D<float4> BaseColorTexture : register(t3);
 Texture2D<float4> MetallicRoughnessTexture : register(t4);
 Texture2D<float4> NormalTexture : register(t5);
 
+Texture2D<float4> HybridGBufferA : register(t6);
+Texture2D<float4> HybridGBufferB : register(t7);
+Texture2D<float4> HybridGBufferC : register(t8);
+Texture2D<float4> HybridSceneDepth : register(t9);
+
+RWTexture2D<float> RaytracedShadow : register(u1);
+
 SamplerState MaterialSampler : register(s0);
 
 static const float PI = 3.1415926535f;

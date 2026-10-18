@@ -32,6 +32,12 @@ class Camera;
 class Material;
 class TopLevelAccelerationStructure;
 
+enum class RenderMode
+{
+	E_Raster,
+	E_Raytracing
+};
+
 struct FrameResource
 {
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator = nullptr;
@@ -93,6 +99,8 @@ public:
 	Renderer();
 	~Renderer();
 
+	void SetRenderMode(RenderMode Mode) { CurrentRenderMode = Mode; }
+
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
 	void RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex);
@@ -146,6 +154,8 @@ public:
 	bool CreateRaytracingOutputBuffer(UINT Width, UINT Height);
 	bool CreateRaytracingDescriptors();
 
+	bool CreateRaytracedShadowMap(UINT Width, UINT Height);
+
 	bool CreateRaytracingGlobalRootSignature();
 	bool CreateRaytracingStateObject();
 
@@ -157,6 +167,8 @@ public:
 	bool CreateLocalRootSignature();
 
 private:
+	RenderMode CurrentRenderMode = RenderMode::E_Raster;
+
 	D3D12Device Device;
 	D3D12CommandQueue CommandQueue;
 	D3D12CommandContext CommandContext;
@@ -263,4 +275,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> RaytracingLocalRootSignature;
 	UINT HitGroupRecordSize = 0;
 	UINT HitGroupRecordCount = 0;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracedShadowMask;
+	D3D12DescriptorHandle RaytracedShadowUAV;
+	D3D12DescriptorHandle RaytracedShadowSRV;
 };

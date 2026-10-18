@@ -144,4 +144,13 @@ void Application::Update(float DeltaTime)
 
 	const float MouseSensitivity = DirectX::XMConvertToRadians(0.1f);
 	MainCamera.AddRotation(DeltaX * MouseSensitivity, -DeltaY * MouseSensitivity);
+
+	if (GetAsyncKeyState('1') & 0x8000)
+	{
+		Renderer.SetRenderMode(RenderMode::E_Raster);
+	}
+	if (GetAsyncKeyState('2') & 0x8000)
+	{
+		Renderer.SetRenderMode(RenderMode::E_Raytracing);
+	}
 }
