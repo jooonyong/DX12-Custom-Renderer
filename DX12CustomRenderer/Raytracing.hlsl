@@ -264,7 +264,21 @@ void ShadowRayGen()
     float4 WorldPosition = mul(Position, InverseViewMatrix);
 
     WorldPosition.xyz /= WorldPosition.w;
-
-    //실제 Shadow TraceRay 연결 전의 임시 출력
-    RaytracedShadow[Pixel] = 1.0f;
+    
+    float3 L = normalize(-Direction);
+    float ShadowBias = 0.001f;
+    float3 ShadowOrigin = WorldPosition.xyz + ShadowBias * L;
+    
+    RayDesc ShadowRay;
+    ShadowRay.Direction = L;
+    ShadowRay.Origin = ShadowOrigin;
+    ShadowRay.TMin = 0.001f;
+    ShadowRay.TMax = 10000.0f;
+    
+    ShadowPayload ShadowInfo;
+    ShadowInfo.Occluded = 0;
+    
+    TraceRay(SceneAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1, 2, 1, ShadowRay, ShadowInfo);
+    
+    RaytracedShadow[Pixel] = 1 - ShadowInfo.Occluded;
 }

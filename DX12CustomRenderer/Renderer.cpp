@@ -315,8 +315,17 @@ void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList
 	CommandList->SetGraphicsRootConstantBufferView(1, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0
 	CommandList->SetGraphicsRootConstantBufferView(2, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b1
 	CommandList->SetGraphicsRootConstantBufferView(3, Frame.ShadowPassConstantBuffer->GetGPUVirtualAddress()); //b2
-	CommandList->SetGraphicsRootDescriptorTable(4, ShadowSRV.GPU); //t4(ShadowTexture)
-
+	if (CurrentRenderMode == RenderMode::E_Raster)
+	{
+		CommandList->SetGraphicsRootDescriptorTable(4, ShadowSRV.GPU); //t4(ShadowTexture)
+		CommandList->SetGraphicsRoot32BitConstant(5, 0, 0);
+	}
+	else if (CurrentRenderMode == RenderMode::E_Hybrid)
+	{
+		CommandList->SetGraphicsRootDescriptorTable(4, RaytracedShadowSRV.GPU); //t4
+		CommandList->SetGraphicsRoot32BitConstant(5, 1, 0);
+	}
+	
 	CommandList->DrawInstanced(3, 1, 0, 0);
 }
 
@@ -564,15 +573,6 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
 			}
 		);
-		Graph.AddPass("ShadowPass",
-			{
-				{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
-			},
-			[&](ID3D12GraphicsCommandList* CommandList)
-			{
-				Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
-			}
-		);
 		Graph.AddPass("RaytracedShadow",
 			{
 				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
@@ -589,7 +589,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{ GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-				{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ RaytracedShadowMask.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write}
 			},
 			[&](ID3D12GraphicsCommandList* CommandList)
@@ -1088,7 +1088,7 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	ShadowRange.BaseShaderRegister = 4; //t4 
 	ShadowRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParams[5]{};
+	D3D12_ROOT_PARAMETER RootParams[6]{};
 	RootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParams[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParams[0].DescriptorTable.pDescriptorRanges = &SRVRange;
@@ -1113,6 +1113,12 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	RootParams[4].DescriptorTable.NumDescriptorRanges = 1;
 	RootParams[4].DescriptorTable.pDescriptorRanges = &ShadowRange;
 	RootParams[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	RootParams[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	RootParams[5].Constants.RegisterSpace = 0;
+	RootParams[5].Constants.ShaderRegister = 3; //b3
+	RootParams[5].Constants.Num32BitValues = 1;
+	RootParams[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_STATIC_SAMPLER_DESC GBufferSamplerDesc{};
 	//GBuffer Sampler
@@ -1150,7 +1156,7 @@ bool Renderer::CreateDeferredLightingRootSignature()
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	RootDesc.NumParameters = 5;
+	RootDesc.NumParameters = _countof(RootParams);
 	RootDesc.NumStaticSamplers = 2;
 	RootDesc.pParameters = RootParams;
 	RootDesc.pStaticSamplers = SamplerDesc;

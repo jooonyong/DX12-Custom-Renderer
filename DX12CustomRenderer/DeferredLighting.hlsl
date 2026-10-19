@@ -28,6 +28,12 @@ cbuffer ShadowPassConstant : register(b2)
 {
     float4x4 LightViewProjectionMatrix;
 }
+
+cbuffer ShadowSettings : register(b3)
+{
+    uint UseRaytracedShadow;
+};
+
 struct VSOutput
 {
     float4 Position : SV_POSITION;
@@ -166,6 +172,17 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
     float3 WorldPosition = ReconstructWorldPosition(Input.UV, Depth);
     float ShadowFactor = CalculateShadowFactor(WorldPosition);
 
+    if(UseRaytracedShadow == 1)
+    {
+        //Hybrid 
+        int2 Pixel = int2(Input.Position.xy);
+        ShadowFactor = ShadowMapTexture.Load(int3(Pixel, 0)).r;
+    }
+    else
+    {
+        //Raster
+        ShadowFactor = CalculateShadowFactor(WorldPosition);
+    }
     float3 Albedo = BaseColorData.rgb;
 
     float3 N = normalize(NormalData.xyz);
