@@ -196,6 +196,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateRaytracedShadowMap(Width, Height))
+	{
+		return false;
+	}
 	if (!CreateRaytracingGlobalRootSignature())
 	{
 		return false;
@@ -392,6 +396,41 @@ void Renderer::RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, Fra
 	CommandList->DispatchRays(&DispatchDesc);
 }
 
+void Renderer::RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame)
+{
+	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
+	
+	CommandList->SetPipelineState1(RaytracingStateObject.Get());
+	CommandList->SetComputeRootSignature(RaytracingGlobalRootSignature.Get());
+
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
+	CommandList->SetDescriptorHeaps(_countof(DescriptorHeaps), DescriptorHeaps);
+
+	CommandList->SetComputeRootDescriptorTable(0, RaytracingTLASSRV.GPU); //t0 TLAS SRV
+	CommandList->SetComputeRootConstantBufferView(2, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0 CameraData constantBuffer
+	CommandList->SetComputeRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //b1 DirectionalLight constantBuffer
+	CommandList->SetComputeRootDescriptorTable(4, GBufferDescriptorTable.GPU); //Hybrid GBufferABC, SceneDepth t6~t9
+	CommandList->SetComputeRootDescriptorTable(5, RaytracedShadowUAV.GPU);
+
+	D3D12_DISPATCH_RAYS_DESC DispatchDesc{};
+	DispatchDesc.RayGenerationShaderRecord.StartAddress = ShadowRayGenShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.RayGenerationShaderRecord.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	DispatchDesc.MissShaderTable.StartAddress = MissShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.MissShaderTable.SizeInBytes = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+	DispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable[CurrentIndex]->GetGPUVirtualAddress();
+	DispatchDesc.HitGroupTable.SizeInBytes = HitGroupRecordSize * HitGroupRecordCount;
+	DispatchDesc.HitGroupTable.StrideInBytes = HitGroupRecordSize;
+
+	DispatchDesc.Width = Width;
+	DispatchDesc.Height = Height;
+	DispatchDesc.Depth = 1;
+
+	CommandList->DispatchRays(&DispatchDesc);
+}
+
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
@@ -496,6 +535,54 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
 			}
 		);
+		Graph.AddPass("DeferredLightingPass",
+			{
+				{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ GBufferB.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
+			}
+		);
+	}
+	else if (CurrentRenderMode == RenderMode::E_Hybrid)
+	{
+		Graph.AddPass("GBufferPass",
+			{
+				{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
+			}
+		);
+		Graph.AddPass("ShadowPass",
+			{
+				{ ShadowDepthTexture.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
+			}
+		);
+		Graph.AddPass("RaytracedShadow",
+			{
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ RaytracedShadowMask.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{	
+				ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
+				Renderer::RenderRaytracedShadowPass(RaytracingCommandList, CurrentFrame);
+			});
 		Graph.AddPass("DeferredLightingPass",
 			{
 				{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
@@ -2264,13 +2351,14 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 
 bool Renderer::CreateRaytracingStateObject()
 {
-	D3D12_EXPORT_DESC Exports[5] =
+	D3D12_EXPORT_DESC Exports[6] =
 	{
 		{ L"RayGen", nullptr,D3D12_EXPORT_FLAG_NONE},
 		{ L"Miss", nullptr, D3D12_EXPORT_FLAG_NONE},
 		{ L"ClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE},
 		{ L"ShadowClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE},
-		{ L"ShadowMiss", nullptr, D3D12_EXPORT_FLAG_NONE}
+		{ L"ShadowMiss", nullptr, D3D12_EXPORT_FLAG_NONE},
+		{ L"ShadowRayGen", nullptr, D3D12_EXPORT_FLAG_NONE}
 	};
 
 	D3D12_DXIL_LIBRARY_DESC DXILLibraryDesc{};
@@ -2361,10 +2449,11 @@ bool Renderer::CreateRaytracingStateObject()
 bool Renderer::CreateShaderBindingTable()
 {
 	void* RayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"RayGen");
+	void* ShadowRayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"ShadowRayGen");
 	void* MissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"Miss");
 	void* ShadowMissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"ShadowMiss");
 
-	if(!RayGenIdentifier || !MissIdentifier || !ShadowMissIdentifier)
+	if(!RayGenIdentifier || !ShadowRayGenIdentifier || !MissIdentifier || !ShadowMissIdentifier)
 	{
 		return false;
 	}
@@ -2373,10 +2462,10 @@ bool Renderer::CreateShaderBindingTable()
 	{
 		return false;
 	}
-	/*if (!CreateShaderTable(MissIdentifier, MissShaderTable))
+	if (!CreateShaderTable(ShadowRayGenIdentifier, ShadowRayGenShaderTable))
 	{
 		return false;
-	}*/
+	}
 	if (!CreateMissShaderTable(MissIdentifier, ShadowMissIdentifier))
 	{
 		return false;

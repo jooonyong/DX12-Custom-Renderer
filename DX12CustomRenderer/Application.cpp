@@ -153,4 +153,8 @@ void Application::Update(float DeltaTime)
 	{
 		Renderer.SetRenderMode(RenderMode::E_Raytracing);
 	}
+	if (GetAsyncKeyState('3') & 0x8000)
+	{
+		Renderer.SetRenderMode(RenderMode::E_Hybrid);
+	}
 }

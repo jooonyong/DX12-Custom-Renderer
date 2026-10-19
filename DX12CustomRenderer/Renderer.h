@@ -35,7 +35,8 @@ class TopLevelAccelerationStructure;
 enum class RenderMode
 {
 	E_Raster,
-	E_Raytracing
+	E_Raytracing,
+	E_Hybrid
 };
 
 struct FrameResource
@@ -108,6 +109,7 @@ public:
 	void RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
 	void RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
 	void RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
+	void RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 
@@ -269,6 +271,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> RaytracingPipelineStateProperties;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> RayGenShaderTable;
+	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowRayGenShaderTable;
 	Microsoft::WRL::ComPtr<ID3D12Resource> MissShaderTable;
 	Microsoft::WRL::ComPtr<ID3D12Resource> HitGroupShaderTable[BufferCount];
 

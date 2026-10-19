@@ -8,7 +8,7 @@ Texture2D<float4> NormalTexture : register(t5);
 Texture2D<float4> HybridGBufferA : register(t6);
 Texture2D<float4> HybridGBufferB : register(t7);
 Texture2D<float4> HybridGBufferC : register(t8);
-Texture2D<float4> HybridSceneDepth : register(t9);
+Texture2D<float> HybridSceneDepth : register(t9);
 
 RWTexture2D<float> RaytracedShadow : register(u1);
 
@@ -231,13 +231,40 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
 [shader("closesthit")]
 void ShadowClosestHit(inout ShadowPayload Payload, in BuiltInTriangleIntersectionAttributes Attr)
 {
-    //장애물을 맞혔다는 결과 기록
     Payload.Occluded = 1;
 }
 
 [shader("miss")]
 void ShadowMiss(inout ShadowPayload Payload)
 {
-    // TODO: 장애물이 없다는 결과 기록
     Payload.Occluded = 0;
+}
+
+[shader("raygeneration")]
+void ShadowRayGen()
+{
+    uint2 Pixel = DispatchRaysIndex().xy;
+    uint2 Dimensions = DispatchRaysDimensions().xy;
+
+    float Depth = HybridSceneDepth.Load(int3(Pixel, 0));
+    
+    // 배경이면 RaytracedShadow[Pixel]에 1 기록
+    if(Depth == 1.0f)
+    {
+        RaytracedShadow[Pixel] = 1.0f;
+        return;
+    }
+    
+    float2 UV = (float2(Pixel) + 0.5f) / float2(Dimensions);
+    float2 NDC = UV * 2.0f - 1.0f;
+    NDC.y = -NDC.y;
+
+    //WorldPosition 복원
+    float4 Position = float4(NDC.x, NDC.y, Depth, 1.0f);
+    float4 WorldPosition = mul(Position, InverseViewMatrix);
+
+    WorldPosition.xyz /= WorldPosition.w;
+
+    //실제 Shadow TraceRay 연결 전의 임시 출력
+    RaytracedShadow[Pixel] = 1.0f;
 }
