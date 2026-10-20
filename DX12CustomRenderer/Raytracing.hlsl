@@ -11,6 +11,7 @@ Texture2D<float4> HybridGBufferC : register(t8);
 Texture2D<float> HybridSceneDepth : register(t9);
 
 RWTexture2D<float> RaytracedShadow : register(u1);
+RWTexture2D<float> RaytracedReflection : register(u2);
 
 SamplerState MaterialSampler : register(s0);
 
@@ -281,4 +282,11 @@ void ShadowRayGen()
     TraceRay(SceneAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1, 2, 1, ShadowRay, ShadowInfo);
     
     RaytracedShadow[Pixel] = 1 - ShadowInfo.Occluded;
+}
+
+[shader("raygeneration")]
+void ReflectionRayGen()
+{
+    uint2 Pixel = DispatchRaysIndex().xy;
+    RaytracedReflection[Pixel] = float4(1.0f, 1.0f, 0.1f, 1.0f);
 }

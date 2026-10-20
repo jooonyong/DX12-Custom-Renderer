@@ -110,6 +110,7 @@ public:
 	void RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
 	void RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 	void RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
+	void RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 
@@ -157,6 +158,7 @@ public:
 	bool CreateRaytracingDescriptors();
 
 	bool CreateRaytracedShadowMap(UINT Width, UINT Height);
+	bool CreateRaytracedReflection(UINT Width, UINT Height);
 
 	bool CreateRaytracingGlobalRootSignature();
 	bool CreateRaytracingStateObject();
@@ -272,6 +274,7 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> RayGenShaderTable;
 	Microsoft::WRL::ComPtr<ID3D12Resource> ShadowRayGenShaderTable;
+	Microsoft::WRL::ComPtr<ID3D12Resource> ReflectionRayGenShaderTable;
 	Microsoft::WRL::ComPtr<ID3D12Resource> MissShaderTable;
 	Microsoft::WRL::ComPtr<ID3D12Resource> HitGroupShaderTable[BufferCount];
 
@@ -282,4 +285,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracedShadowMask;
 	D3D12DescriptorHandle RaytracedShadowUAV;
 	D3D12DescriptorHandle RaytracedShadowSRV;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracedReflection;
+	D3D12DescriptorHandle RaytracedReflectionUAV;
+	D3D12DescriptorHandle RaytracedReflectionSRV;
 };

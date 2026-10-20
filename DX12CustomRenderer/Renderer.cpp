@@ -200,6 +200,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateRaytracedReflection(Width, Height))
+	{
+		return false;
+	}
 	if (!CreateRaytracingGlobalRootSignature())
 	{
 		return false;
@@ -440,6 +444,37 @@ void Renderer::RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList
 	CommandList->DispatchRays(&DispatchDesc);
 }
 
+void Renderer::RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame)
+{
+	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
+	
+	CommandList->SetPipelineState1(RaytracingStateObject.Get());
+	CommandList->SetComputeRootSignature(RaytracingGlobalRootSignature.Get());
+
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
+	CommandList->SetDescriptorHeaps(_countof(DescriptorHeaps), DescriptorHeaps);
+
+	CommandList->SetComputeRootDescriptorTable(6, RaytracedReflectionUAV.GPU);
+
+	D3D12_DISPATCH_RAYS_DESC DispatchDesc{};
+	DispatchDesc.RayGenerationShaderRecord.StartAddress = ReflectionRayGenShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.RayGenerationShaderRecord.SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	DispatchDesc.MissShaderTable.StartAddress = MissShaderTable->GetGPUVirtualAddress();
+	DispatchDesc.MissShaderTable.SizeInBytes = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+	DispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	DispatchDesc.HitGroupTable.StartAddress = HitGroupShaderTable[CurrentIndex]->GetGPUVirtualAddress();
+	DispatchDesc.HitGroupTable.SizeInBytes = HitGroupRecordSize * HitGroupRecordCount;
+	DispatchDesc.HitGroupTable.StrideInBytes = HitGroupRecordSize;
+
+	DispatchDesc.Width = Width;
+	DispatchDesc.Height = Height;
+	DispatchDesc.Depth = 1;
+
+	CommandList->DispatchRays(&DispatchDesc);
+}
+
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
@@ -583,6 +618,16 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
 				Renderer::RenderRaytracedShadowPass(RaytracingCommandList, CurrentFrame);
 			});
+		Graph.AddPass("RaytracedReflectionPass",
+			{
+				{ RaytracedReflection.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write}
+			},
+			[&](ID3D12GraphicsCommandList* CommandList)
+			{
+				ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
+				Renderer::RenderRaytracedReflectionPass(RaytracingCommandList, CurrentFrame);
+			}
+		);
 		Graph.AddPass("DeferredLightingPass",
 			{
 				{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
@@ -2254,9 +2299,56 @@ bool Renderer::CreateRaytracedShadowMap(UINT Width, UINT Height)
 	return true;
 }
 
+bool Renderer::CreateRaytracedReflection(UINT Width, UINT Height)
+{
+	D3D12_RESOURCE_DESC RTReflectionDesc{};
+	RTReflectionDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	RTReflectionDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RTReflectionDesc.MipLevels = 1;
+	RTReflectionDesc.Width = Width;
+	RTReflectionDesc.Height = Height;
+	RTReflectionDesc.DepthOrArraySize = 1;
+	RTReflectionDesc.SampleDesc.Count = 1;
+	RTReflectionDesc.SampleDesc.Quality = 0;
+	RTReflectionDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	RTReflectionDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &RTReflectionDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr, IID_PPV_ARGS(&RaytracedReflection));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	StateTracker.RegisterResource(RaytracedReflection.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	RaytracedReflectionUAV = SRVDescriptorAllocator.Allocate(1);
+	RaytracedReflectionSRV = SRVDescriptorAllocator.Allocate(1);
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC RTRUAVDesc{};
+	RTRUAVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RTRUAVDesc.Texture2D.MipSlice = 0;
+	RTRUAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+	Device.GetRaytracingDevice()->CreateUnorderedAccessView(RaytracedReflection.Get(), nullptr, &RTRUAVDesc, RaytracedReflectionUAV.CPU);
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC RTRSRVDesc{};
+	RTRSRVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RTRSRVDesc.Texture2D.MipLevels = 1;
+	RTRSRVDesc.Texture2D.MostDetailedMip = 0;
+	RTRSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	RTRSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
+	Device.GetRaytracingDevice()->CreateShaderResourceView(RaytracedReflection.Get(), &RTRSRVDesc, RaytracedReflectionSRV.CPU);
+
+	return true;
+}
+
 bool Renderer::CreateRaytracingGlobalRootSignature()
 {
-	D3D12_DESCRIPTOR_RANGE Ranges[4]{};
+	D3D12_DESCRIPTOR_RANGE Ranges[5]{};
 
 	// t0 : TLAS
 	Ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -2272,6 +2364,7 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	Ranges[1].RegisterSpace = 0;
 	Ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+	//GBuffer
 	Ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	Ranges[2].NumDescriptors = 4;
 	Ranges[2].RegisterSpace = 0;
@@ -2284,7 +2377,13 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	Ranges[3].BaseShaderRegister = 1; //u1 RTShdow
 	Ranges[3].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParameters[6]{};
+	Ranges[4].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+	Ranges[4].NumDescriptors = 1;
+	Ranges[4].RegisterSpace = 0;
+	Ranges[4].BaseShaderRegister = 2; //u2 RTReflection
+	Ranges[4].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParameters[7]{};
 	RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParameters[0].DescriptorTable.pDescriptorRanges = &Ranges[0]; //TLAS
@@ -2314,6 +2413,11 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	RootParameters[5].DescriptorTable.NumDescriptorRanges = 1;
 	RootParameters[5].DescriptorTable.pDescriptorRanges = &Ranges[3]; //RTShadow UAV
 	RootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParameters[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParameters[6].DescriptorTable.NumDescriptorRanges = 1;
+	RootParameters[6].DescriptorTable.pDescriptorRanges = &Ranges[4]; //RTReflection UAV;
+	RootParameters[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -2357,14 +2461,15 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 
 bool Renderer::CreateRaytracingStateObject()
 {
-	D3D12_EXPORT_DESC Exports[6] =
+	D3D12_EXPORT_DESC Exports[7] =
 	{
 		{ L"RayGen", nullptr,D3D12_EXPORT_FLAG_NONE},
 		{ L"Miss", nullptr, D3D12_EXPORT_FLAG_NONE},
 		{ L"ClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE},
 		{ L"ShadowClosestHit", nullptr, D3D12_EXPORT_FLAG_NONE},
 		{ L"ShadowMiss", nullptr, D3D12_EXPORT_FLAG_NONE},
-		{ L"ShadowRayGen", nullptr, D3D12_EXPORT_FLAG_NONE}
+		{ L"ShadowRayGen", nullptr, D3D12_EXPORT_FLAG_NONE},
+		{ L"ReflectionRayGen", nullptr, D3D12_EXPORT_FLAG_NONE}
 	};
 
 	D3D12_DXIL_LIBRARY_DESC DXILLibraryDesc{};
@@ -2456,10 +2561,11 @@ bool Renderer::CreateShaderBindingTable()
 {
 	void* RayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"RayGen");
 	void* ShadowRayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"ShadowRayGen");
+	void* ReflectionRayGenIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"ReflectionRayGen");
 	void* MissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"Miss");
 	void* ShadowMissIdentifier = RaytracingPipelineStateProperties->GetShaderIdentifier(L"ShadowMiss");
 
-	if(!RayGenIdentifier || !ShadowRayGenIdentifier || !MissIdentifier || !ShadowMissIdentifier)
+	if(!RayGenIdentifier || !ShadowRayGenIdentifier || !ReflectionRayGenIdentifier || !MissIdentifier || !ShadowMissIdentifier)
 	{
 		return false;
 	}
@@ -2468,7 +2574,11 @@ bool Renderer::CreateShaderBindingTable()
 	{
 		return false;
 	}
-	if (!CreateShaderTable(ShadowRayGenIdentifier, ShadowRayGenShaderTable))
+	if (!CreateShaderTable(ShadowRayGenIdentifier, ReflectionRayGenShaderTable))
+	{
+		return false;
+	}
+	if (!CreateShaderTable(ReflectionRayGenIdentifier, RaytracedReflection))
 	{
 		return false;
 	}
@@ -2651,19 +2761,19 @@ bool Renderer::CreateLocalRootSignature()
 	D3D12_DESCRIPTOR_RANGE TextureRanges[3]{};
 	TextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	TextureRanges[0].NumDescriptors = 1;
-	TextureRanges[0].BaseShaderRegister = 3; // t3
+	TextureRanges[0].BaseShaderRegister = 3; // t3 BaseColorTexture
 	TextureRanges[0].RegisterSpace = 0;
 	TextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	TextureRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	TextureRanges[1].NumDescriptors = 1;
-	TextureRanges[1].BaseShaderRegister = 4; //t4
+	TextureRanges[1].BaseShaderRegister = 4; //t4 MRTexture
 	TextureRanges[1].RegisterSpace = 0;
 	TextureRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	TextureRanges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	TextureRanges[2].NumDescriptors = 1;
-	TextureRanges[2].BaseShaderRegister = 5; //t5
+	TextureRanges[2].BaseShaderRegister = 5; //t5 NormalTexture
 	TextureRanges[2].RegisterSpace = 0;
 	TextureRanges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
