@@ -308,7 +308,7 @@ void ReflectionRayGen()
 
     WorldPosition.xyz /= WorldPosition.w;
     
-    float4 WorldNormal = normalize(HybridGBufferB.Load(int3(Pixel, 0)).xyz);
+    float4 WorldNormal = HybridGBufferB.Load(int3(Pixel, 0));
 
     float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
  
@@ -318,7 +318,7 @@ void ReflectionRayGen()
     ReflectionRay.Direction = OutDirection;
     ReflectionRay.Origin = WorldPosition.xyz;
     ReflectionRay.TMin = 0.001f;
-    ReflectionRay.TMax = 10000f;
+    ReflectionRay.TMax = 10000.0f;
     
     float3 DebugColor = OutDirection * 0.5f + 0.5f;
     RaytracedReflection[Pixel] = float4(DebugColor, 1.0f);

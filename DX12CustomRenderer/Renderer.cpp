@@ -1141,11 +1141,11 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	ShadowRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	D3D12_DESCRIPTOR_RANGE ReflectionRange{};
-	ShadowRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-	ShadowRange.RegisterSpace = 0;
-	ShadowRange.NumDescriptors = 1;
-	ShadowRange.BaseShaderRegister = 5; //t5
-	ShadowRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	ReflectionRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	ReflectionRange.RegisterSpace = 0;
+	ReflectionRange.NumDescriptors = 1;
+	ReflectionRange.BaseShaderRegister = 5; //t5
+	ReflectionRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	D3D12_ROOT_PARAMETER RootParams[7]{};
 	RootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
