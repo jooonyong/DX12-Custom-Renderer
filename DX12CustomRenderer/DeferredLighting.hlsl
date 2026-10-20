@@ -3,6 +3,7 @@ Texture2D GBufferB : register(t1);
 Texture2D GBufferC : register(t2);
 Texture2D SceneDepth : register(t3);
 Texture2D ShadowMapTexture : register(t4);
+Texture2D ReflectionTexture : register(t5);
 
 SamplerState PointSampler : register(s0);
 SamplerState ShadowMapSampler : register(s1);

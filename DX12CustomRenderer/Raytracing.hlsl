@@ -5,9 +5,9 @@ Texture2D<float4> BaseColorTexture : register(t3);
 Texture2D<float4> MetallicRoughnessTexture : register(t4);
 Texture2D<float4> NormalTexture : register(t5);
 
-Texture2D<float4> HybridGBufferA : register(t6);
-Texture2D<float4> HybridGBufferB : register(t7);
-Texture2D<float4> HybridGBufferC : register(t8);
+Texture2D<float4> HybridGBufferA : register(t6); //BaseColor
+Texture2D<float4> HybridGBufferB : register(t7); //Normal
+Texture2D<float4> HybridGBufferC : register(t8); //MRTexture
 Texture2D<float> HybridSceneDepth : register(t9);
 
 RWTexture2D<float> RaytracedShadow : register(u1);
@@ -288,5 +288,38 @@ void ShadowRayGen()
 void ReflectionRayGen()
 {
     uint2 Pixel = DispatchRaysIndex().xy;
-    RaytracedReflection[Pixel] = float4(1.0f, 1.0f, 0.1f, 1.0f);
+    uint2 Dimensions = DispatchRaysDimensions().xy;
+    //RaytracedReflection[Pixel] = float4(1.0f, 1.0f, 0.1f, 1.0f);
+    
+    float Depth = HybridSceneDepth.Load(int3(Pixel, 0));
+    if (Depth == 1.0f)
+    {
+        RaytracedReflection[Pixel] =
+        float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
+    }
+    float2 UV = (float2(Pixel) + 0.5f) / float2(Dimensions);
+    float2 NDC = UV * 2.0f - 1.0f;
+    NDC.y = -NDC.y;
+
+    //WorldPosition º¹¿ø
+    float4 Position = float4(NDC.x, NDC.y, Depth, 1.0f);
+    float4 WorldPosition = mul(Position, InverseViewMatrix);
+
+    WorldPosition.xyz /= WorldPosition.w;
+    
+    float4 WorldNormal = normalize(HybridGBufferB.Load(int3(Pixel, 0)).xyz);
+
+    float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
+ 
+    float3 OutDirection = normalize(reflect(InDirection, WorldNormal.xyz));
+    
+    RayDesc ReflectionRay;
+    ReflectionRay.Direction = OutDirection;
+    ReflectionRay.Origin = WorldPosition.xyz;
+    ReflectionRay.TMin = 0.001f;
+    ReflectionRay.TMax = 10000f;
+    
+    float3 DebugColor = OutDirection * 0.5f + 0.5f;
+    RaytracedReflection[Pixel] = float4(DebugColor, 1.0f);
 }
