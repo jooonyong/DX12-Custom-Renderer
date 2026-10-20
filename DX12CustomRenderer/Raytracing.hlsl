@@ -11,7 +11,7 @@ Texture2D<float4> HybridGBufferC : register(t8);
 Texture2D<float> HybridSceneDepth : register(t9);
 
 RWTexture2D<float> RaytracedShadow : register(u1);
-RWTexture2D<float> RaytracedReflection : register(u2);
+RWTexture2D<float4> RaytracedReflection : register(u2);
 
 SamplerState MaterialSampler : register(s0);
 

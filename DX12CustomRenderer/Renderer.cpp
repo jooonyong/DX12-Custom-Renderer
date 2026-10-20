@@ -2574,11 +2574,11 @@ bool Renderer::CreateShaderBindingTable()
 	{
 		return false;
 	}
-	if (!CreateShaderTable(ShadowRayGenIdentifier, ReflectionRayGenShaderTable))
+	if (!CreateShaderTable(ShadowRayGenIdentifier, ShadowRayGenShaderTable))
 	{
 		return false;
 	}
-	if (!CreateShaderTable(ReflectionRayGenIdentifier, RaytracedReflection))
+	if (!CreateShaderTable(ReflectionRayGenIdentifier, ReflectionRayGenShaderTable))
 	{
 		return false;
 	}
