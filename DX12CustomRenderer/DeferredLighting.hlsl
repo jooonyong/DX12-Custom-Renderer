@@ -165,25 +165,14 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
     float4 MaterialData = GBufferC.Sample(PointSampler, Input.UV);
    
     float Depth = SceneDepth.Sample(PointSampler, Input.UV).r;
+    
     if (Depth >= 0.999999f)
     {
         return float4(0.0f, 0.2f, 0.4f, 1.0f);
     }
     
     float3 WorldPosition = ReconstructWorldPosition(Input.UV, Depth);
-    float ShadowFactor = CalculateShadowFactor(WorldPosition);
-
-    if(UseRaytracedShadow == 1)
-    {
-        //Hybrid 
-        int2 Pixel = int2(Input.Position.xy);
-        ShadowFactor = ShadowMapTexture.Load(int3(Pixel, 0)).r;
-    }
-    else
-    {
-        //Raster
-        ShadowFactor = CalculateShadowFactor(WorldPosition);
-    }
+   
     float3 Albedo = BaseColorData.rgb;
 
     float3 N = normalize(NormalData.xyz);
@@ -202,16 +191,32 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
     F0 = lerp(F0, Albedo, Metallic);
 
     float D = DistributionGGX(N, H, Roughness);
-
     float G =  GeometrySmith(N,V, L, Roughness);
-
     float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
+    
     float3 Numerator = D * G * F;
-
     float Denominator = max( 4.0f * NdotV * NdotL, 0.001f);
 
     float3 Specular = Numerator / Denominator;
    
+    float ShadowFactor;
+    float3 ReflectionFactor = float3(0.0f, 0.0f, 0.0f);
+    
+    if (UseRaytracedShadow == 1)
+    {
+        //Hybrid 
+        int2 Pixel = int2(Input.Position.xy);
+        ShadowFactor = ShadowMapTexture.Load(int3(Pixel, 0)).r;
+        
+        float3 ReflectionFresnel = FresnelSchlick(saturate(NdotV), F0);
+        ReflectionFactor = ReflectionTexture.Load(int3(Pixel, 0)).rgb * ReflectionFresnel;
+    }
+    else
+    {
+        //Raster
+        ShadowFactor = CalculateShadowFactor(WorldPosition);
+    }
+    
     float3 kS = F;
     float3 kD = (1.0f - kS) * (1.0f - Metallic);
 
@@ -222,7 +227,7 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
 
     float3 Ambient = Albedo * AmbientIntensity;
 
-    float3 FinalColor = DirectLighting + Ambient;
+    float3 FinalColor = DirectLighting + Ambient + ReflectionFactor;
 
     return float4(FinalColor, 1.0f);
 }

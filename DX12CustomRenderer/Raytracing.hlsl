@@ -174,7 +174,7 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     float3 WorldPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     
     float3 L = normalize(-Direction);
-    float3 V = normalize(CameraPosition - WorldPosition);
+    float3 V = normalize(-WorldRayDirection());
     float3 H = normalize(V + L);
     
     float3 WorldEdge1 = mul((float3x3) ObjectToWorld3x4(), V1.Position - V0.Position);
@@ -224,7 +224,7 @@ void ClosestHit(inout RayPayload Payload, in BuiltInTriangleIntersectionAttribut
     ShadowPayload ShadowInfo;
     ShadowInfo.Occluded = 0;
     
-    TraceRay(SceneAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1, 2, 1, ShadowRayDesc, ShadowInfo);
+    TraceRay(SceneAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1, 2, 1, ShadowRayDesc, ShadowInfo); //HitOffset 1, GeometryMultiplier 2, MissshaderIndex 1
     
     Payload.Color = Ambient + DirectLighting * (1 - ShadowInfo.Occluded);
 }
@@ -308,7 +308,7 @@ void ReflectionRayGen()
 
     WorldPosition.xyz /= WorldPosition.w;
     
-    float4 WorldNormal = HybridGBufferB.Load(int3(Pixel, 0));
+    float3 WorldNormal = normalize(HybridGBufferB.Load(int3(Pixel, 0)).xyz);
 
     float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
  
@@ -316,10 +316,15 @@ void ReflectionRayGen()
     
     RayDesc ReflectionRay;
     ReflectionRay.Direction = OutDirection;
-    ReflectionRay.Origin = WorldPosition.xyz;
+    ReflectionRay.Origin = WorldPosition.xyz + WorldNormal.xyz * 0.01f;
     ReflectionRay.TMin = 0.001f;
     ReflectionRay.TMax = 10000.0f;
     
-    float3 DebugColor = OutDirection * 0.5f + 0.5f;
-    RaytracedReflection[Pixel] = float4(DebugColor, 1.0f);
+    RayPayload Payload;
+    Payload.Color = float3(0.0f, 0.0f, 0.0f);
+    
+    TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ReflectionRay, Payload);
+    
+//    float3 DebugColor = OutDirection * 0.5f + 0.5f;
+    RaytracedReflection[Pixel] = float4(Payload.Color, 1.0f);
 }

@@ -456,7 +456,9 @@ void Renderer::RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* Command
 	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
 	CommandList->SetDescriptorHeaps(_countof(DescriptorHeaps), DescriptorHeaps);
 
+	CommandList->SetComputeRootDescriptorTable(0, RaytracingTLASSRV.GPU);
 	CommandList->SetComputeRootConstantBufferView(2, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress()); //b0 CameraData constantBuffer
+	CommandList->SetComputeRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //DirectionalLight ConstantBuffer
 	CommandList->SetComputeRootDescriptorTable(4, GBufferDescriptorTable.GPU); //Hybrid GBufferABC, SceneDepth t6~t9
 	CommandList->SetComputeRootDescriptorTable(6, RaytracedReflectionUAV.GPU);
 
@@ -2393,7 +2395,7 @@ bool Renderer::CreateRaytracingGlobalRootSignature()
 	Ranges[3].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
 	Ranges[3].NumDescriptors = 1;
 	Ranges[3].RegisterSpace = 0;
-	Ranges[3].BaseShaderRegister = 1; //u1 RTShdow
+	Ranges[3].BaseShaderRegister = 1; //u1 RTShadow
 	Ranges[3].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	Ranges[4].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;

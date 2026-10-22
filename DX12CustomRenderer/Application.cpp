@@ -3,7 +3,7 @@
 
 bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 {
-	if (!Wnd.Initialize(Instance, 1080, 720, L"Custom Renderer"))
+	if (!Wnd.Initialize(Instance, 1920, 1080, L"Custom Renderer"))
 	{
 		return false;
 	}
@@ -13,7 +13,7 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 	QueryPerformanceFrequency(&Frequency);
 	QueryPerformanceCounter(&PreviousTime);
 
-	if (!Renderer.Initialize(Wnd.GetHandle(), 1080, 720))
+	if (!Renderer.Initialize(Wnd.GetHandle(), 1920, 1080))
 	{
 		return false;
 	}
