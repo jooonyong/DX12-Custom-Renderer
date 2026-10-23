@@ -204,11 +204,23 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateReflectionHistoryTexture(Width, Height))
+	{
+		return false;
+	}
 	if (!CreateRaytracingGlobalRootSignature())
 	{
 		return false;
 	}
 	if (!CreateLocalRootSignature())
+	{
+		return false;
+	}
+	if (!CreateReflectionAccumulationRootSignature())
+	{
+		return false;
+	}
+	if (!CreateReflectionAccumulationPipelineState())
 	{
 		return false;
 	}
@@ -449,7 +461,7 @@ void Renderer::RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList
 void Renderer::RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
-	
+
 	CommandList->SetPipelineState1(RaytracingStateObject.Get());
 	CommandList->SetComputeRootSignature(RaytracingGlobalRootSignature.Get());
 
@@ -461,6 +473,8 @@ void Renderer::RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* Command
 	CommandList->SetComputeRootConstantBufferView(3, Frame.DirLgtConstantBuffer->GetGPUVirtualAddress()); //DirectionalLight ConstantBuffer
 	CommandList->SetComputeRootDescriptorTable(4, GBufferDescriptorTable.GPU); //Hybrid GBufferABC, SceneDepth t6~t9
 	CommandList->SetComputeRootDescriptorTable(6, RaytracedReflectionUAV.GPU);
+
+	ReflectionSampleFrameIndex++;
 
 	D3D12_DISPATCH_RAYS_DESC DispatchDesc{};
 	DispatchDesc.RayGenerationShaderRecord.StartAddress = ReflectionRayGenShaderTable->GetGPUVirtualAddress();
@@ -533,6 +547,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	DirectX::XMMATRIX InverseViewProjection = DirectX::XMMatrixInverse(nullptr, ViewProjection);
 	DirectX::XMStoreFloat4x4(&InverseViewData.InverseViewMatrix,XMMatrixTranspose(InverseViewProjection));
 	InverseViewData.CameraPosition = MainCamera.GetPosition();
+	InverseViewData.SampleFrameIndex = ReflectionSampleFrameIndex;
 
 	memcpy(CurrentFrame.DeferredPassMappedData, &InverseViewData, sizeof(DeferredPassConstant));
 	DefaultMaterial->UpdateGPU(CurrentIndex);
@@ -1229,8 +1244,8 @@ bool Renderer::CreateDeferredLightingRootSignature()
 	RootDesc.pParameters = RootParams;
 	RootDesc.pStaticSamplers = SamplerDesc;
 
-	ID3DBlob* SerializedRootSignature;
-	ID3DBlob* ErrorBlob;
+	Microsoft::WRL::ComPtr<ID3DBlob> SerializedRootSignature;
+	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
 	if (FAILED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SerializedRootSignature, &ErrorBlob)))
 	{
 		if (ErrorBlob)
@@ -1333,8 +1348,8 @@ bool Renderer::CreateToneMappingRootSignature()
 	RootDesc.pParameters = RootParam;
 	RootDesc.pStaticSamplers = &SamplerDesc;
 
-	ID3DBlob* SerializedRootSignature;
-	ID3DBlob* ErrorBlob;
+	Microsoft::WRL::ComPtr<ID3DBlob> SerializedRootSignature;
+	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
 	if (FAILED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SerializedRootSignature, &ErrorBlob)))
 	{
 		if (ErrorBlob)
@@ -1388,6 +1403,93 @@ bool Renderer::CreateToneMappingPipelineState()
 	PipelineStateDesc.SampleMask = UINT_MAX;
 
 	if (FAILED(Device.GetDevice()->CreateGraphicsPipelineState(&PipelineStateDesc, IID_PPV_ARGS(&ToneMappingPipelineState))))
+	{
+		return false;
+	}
+	return true;
+}
+
+bool Renderer::CreateReflectionAccumulationRootSignature()
+{
+	D3D12_DESCRIPTOR_RANGE ReflectionTextureRange{};
+	ReflectionTextureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	ReflectionTextureRange.NumDescriptors = 1;
+	ReflectionTextureRange.BaseShaderRegister = 0;
+	ReflectionTextureRange.RegisterSpace = 0;
+	ReflectionTextureRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_DESCRIPTOR_RANGE PrevTextureRange{};
+	PrevTextureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	PrevTextureRange.NumDescriptors = 1;
+	PrevTextureRange.BaseShaderRegister = 1;
+	PrevTextureRange.RegisterSpace = 0;
+	PrevTextureRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_DESCRIPTOR_RANGE OutTextureRange{};
+	OutTextureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+	OutTextureRange.NumDescriptors = 1;
+	OutTextureRange.BaseShaderRegister = 0;
+	OutTextureRange.RegisterSpace = 0;
+	OutTextureRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParam[4]{};
+	RootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[0].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[0].DescriptorTable.pDescriptorRanges = &ReflectionTextureRange; //t0 ReflectionTexture;
+	RootParam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[1].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[1].DescriptorTable.pDescriptorRanges = &PrevTextureRange;
+	RootParam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParam[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[2].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[2].DescriptorTable.pDescriptorRanges = &OutTextureRange; //u0 History Output
+	RootParam[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParam[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParam[3].Descriptor.RegisterSpace = 0;
+	RootParam[3].Descriptor.ShaderRegister = 0; //b0 AccumulationConstants
+	RootParam[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
+	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+	RootDesc.NumParameters = _countof(RootParam);
+	RootDesc.NumStaticSamplers = 0;
+	RootDesc.pParameters = RootParam;
+	RootDesc.pStaticSamplers = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3DBlob> SerializedRootSignature;
+	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
+	if (FAILED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SerializedRootSignature, &ErrorBlob)))
+	{
+		if (ErrorBlob)
+		{
+			OutputDebugStringA(static_cast<const char*>(ErrorBlob->GetBufferPointer()));
+		}
+		return false;
+	}
+
+	if (FAILED(Device.GetDevice()->CreateRootSignature(0, SerializedRootSignature->GetBufferPointer(), SerializedRootSignature->GetBufferSize(), IID_PPV_ARGS(&ReflectionAccumulationRootSignature))))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Renderer::CreateReflectionAccumulationPipelineState()
+{
+	D3D12_COMPUTE_PIPELINE_STATE_DESC CSDesc{};
+	CSDesc.pRootSignature = ReflectionAccumulationRootSignature.Get();
+	CSDesc.CS.pShaderBytecode = ReflectionAccumulationComputeShader->GetBufferPointer();
+	CSDesc.CS.BytecodeLength = ReflectionAccumulationComputeShader->GetBufferSize();
+	CSDesc.NodeMask = 0;
+	CSDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+
+	HRESULT Result = Device.GetDevice()->CreateComputePipelineState(&CSDesc, IID_PPV_ARGS(&ReflectionAccumulationPipelineState));
+	if (FAILED(Result))
 	{
 		return false;
 	}
@@ -1449,6 +1551,11 @@ bool Renderer::CreateShaders()
 		return false;
 	}
 	if (!CompileRaytracingShader(L"Raytracing.hlsl", RaytracingLibrary))
+	{
+		return false;
+	}
+	ReflectionAccumulationComputeShader = CompileShader(L"ReflectionAccumulation.hlsl", L"CSMain", L"cs_6_0");
+	if (!ReflectionAccumulationComputeShader)
 	{
 		return false;
 	}
@@ -2365,6 +2472,64 @@ bool Renderer::CreateRaytracedReflection(UINT Width, UINT Height)
 	RTRSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
 	Device.GetRaytracingDevice()->CreateShaderResourceView(RaytracedReflection.Get(), &RTRSRVDesc, RaytracedReflectionSRV.CPU);
+
+	return true;
+}
+
+bool Renderer::CreateReflectionHistoryTexture(UINT Width, UINT Height)
+{
+	D3D12_RESOURCE_DESC RHDesc{};
+	RHDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	RHDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RHDesc.MipLevels = 1;
+	RHDesc.Width = Width;
+	RHDesc.Height = Height;
+	RHDesc.DepthOrArraySize = 1;
+	RHDesc.SampleDesc.Count = 1;
+	RHDesc.SampleDesc.Quality = 0;
+	RHDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	RHDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	HRESULT Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &RHDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr, IID_PPV_ARGS(&ReflectionHistory1));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	Result = Device.GetRaytracingDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &RHDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr, IID_PPV_ARGS(&ReflectionHistory2));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	StateTracker.RegisterResource(ReflectionHistory1.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	StateTracker.RegisterResource(ReflectionHistory2.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	ReflectionHistoryUAV1 = SRVDescriptorAllocator.Allocate(1);
+	ReflectionHistorySRV1 = SRVDescriptorAllocator.Allocate(1);
+	ReflectionHistoryUAV2 = SRVDescriptorAllocator.Allocate(1);
+	ReflectionHistorySRV2 = SRVDescriptorAllocator.Allocate(1);
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC RHUAVDesc{};
+	RHUAVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RHUAVDesc.Texture2D.MipSlice = 0;
+	RHUAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC RHSRVDesc{};
+	RHSRVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	RHSRVDesc.Texture2D.MipLevels = 1;
+	RHSRVDesc.Texture2D.MostDetailedMip = 0;
+	RHSRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	RHSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
+	Device.GetRaytracingDevice()->CreateUnorderedAccessView(ReflectionHistory1.Get(), nullptr, &RHUAVDesc, ReflectionHistoryUAV1.CPU);
+	Device.GetRaytracingDevice()->CreateShaderResourceView(ReflectionHistory1.Get(), &RHSRVDesc, ReflectionHistorySRV1.CPU);
+	Device.GetRaytracingDevice()->CreateUnorderedAccessView(ReflectionHistory2.Get(), nullptr, &RHUAVDesc, ReflectionHistoryUAV2.CPU);
+	Device.GetRaytracingDevice()->CreateShaderResourceView(ReflectionHistory2.Get(), &RHSRVDesc, ReflectionHistorySRV2.CPU);
 
 	return true;
 }

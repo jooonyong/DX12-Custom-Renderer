@@ -21,7 +21,7 @@ cbuffer InverseViewMatrix : register(b0)
 {
     float4x4 InverseViewMatrix;
     float3 CameraPosition;
-    float Padding;
+    float SampleFrameIndex;
 }
 
 cbuffer DirectionalLightConstant : register(b1)
@@ -135,9 +135,9 @@ uint Hash(uint Value)
     return (Word >> 22u) ^ Word;
 }
 
-float2 GenerateXi(uint2 Pixel, uint Width, uint SampleIndex)
+float2 GenerateXi(uint2 Pixel, uint Width, uint SampleIndex, uint SampleFrameIndex)
 {
-    uint Index = Pixel.y * Width + Pixel.x + Hash(SampleIndex);
+    uint Index = Pixel.y * Width + Pixel.x + Hash(SampleFrameIndex * 4 + SampleIndex);
     uint Hash1 = Hash(Index);
     uint Hash2 = Hash(Hash1);
     
@@ -398,7 +398,7 @@ void ReflectionRayGen()
     //ReflectionRay 무작위 4방향 Sampling
     for (int i = 0; i < 4;i++)
     {
-        float2 Xi = GenerateXi(Pixel, Dimensions.x, i);
+        float2 Xi = GenerateXi(Pixel, Dimensions.x, i, SampleFrameIndex);
         float3 ReflectionNormal = SampleGGXNormal(Xi, Roughness, WorldNormal);
             
         float3 OutDirection = normalize(reflect(InDirection, ReflectionNormal));

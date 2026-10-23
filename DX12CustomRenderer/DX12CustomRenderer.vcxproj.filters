@@ -192,5 +192,8 @@
     <None Include="Raytracing.hlsl">
       <Filter>Source\Shaders</Filter>
     </None>
+    <None Include="ReflectionAccumulation.hlsl">
+      <Filter>Source\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

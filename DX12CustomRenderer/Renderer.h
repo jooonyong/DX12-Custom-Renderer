@@ -78,7 +78,7 @@ struct DeferredPassConstant
 {
 	DirectX::XMFLOAT4X4 InverseViewMatrix;
 	DirectX::XMFLOAT3 CameraPosition;
-	float Padding;
+	float SampleFrameIndex;
 };
 
 struct DirectionalLightConstant
@@ -129,6 +129,9 @@ public:
 	bool CreateToneMappingRootSignature();
 	bool CreateToneMappingPipelineState();
 
+	bool CreateReflectionAccumulationRootSignature();
+	bool CreateReflectionAccumulationPipelineState();
+
 	bool CreateShaders();
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const wchar_t* FilePath, const wchar_t* EntryPoint, const wchar_t* TargetProfile);
 	bool CompileRaytracingShader(const wchar_t* FilePath, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob);
@@ -159,6 +162,7 @@ public:
 
 	bool CreateRaytracedShadowMap(UINT Width, UINT Height);
 	bool CreateRaytracedReflection(UINT Width, UINT Height);
+	bool CreateReflectionHistoryTexture(UINT Width, UINT Height);
 
 	bool CreateRaytracingGlobalRootSignature();
 	bool CreateRaytracingStateObject();
@@ -289,4 +293,19 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> RaytracedReflection;
 	D3D12DescriptorHandle RaytracedReflectionUAV;
 	D3D12DescriptorHandle RaytracedReflectionSRV;
+
+	UINT ReflectionSampleFrameIndex = 0;
+
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> ReflectionAccumulationRootSignature = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> ReflectionAccumulationPipelineState = nullptr;
+
+	Microsoft::WRL::ComPtr<IDxcBlob> ReflectionAccumulationComputeShader;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> ReflectionHistory1;
+	Microsoft::WRL::ComPtr<ID3D12Resource> ReflectionHistory2;
+
+	D3D12DescriptorHandle ReflectionHistoryUAV1;
+	D3D12DescriptorHandle ReflectionHistorySRV1;
+	D3D12DescriptorHandle ReflectionHistoryUAV2;
+	D3D12DescriptorHandle ReflectionHistorySRV2;
 };
