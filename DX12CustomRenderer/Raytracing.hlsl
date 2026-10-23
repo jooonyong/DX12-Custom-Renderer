@@ -67,6 +67,7 @@ struct ShadowPayload
     uint Occluded;
 };
 
+//Specular D
 float DistributionGGX(float3 N, float3 H, float Roughness)
 {
     float a2 = Roughness * Roughness * Roughness * Roughness;
@@ -75,7 +76,7 @@ float DistributionGGX(float3 N, float3 H, float Roughness)
 
     return a2 / (PI * Denominator * Denominator);
 }
-
+//Specular G
 float GeometrySchlickGGX(float NdotX, float Roughness)
 {
     float R = Roughness + 1.0f;
@@ -98,6 +99,54 @@ float GeometrySmith(float3 N, float3 V, float3 L, float Roughness)
 float3 FresnelSchlick(float CosTheta, float3 F0)
 {
     return F0 + (1.0f - F0) * pow(1.0f - CosTheta, 5.0f);
+}
+
+void BuildOrthonormalBasis(float3 N, out float3 T, out float3 B)
+{
+    float3 A = abs(N.z) > 0.99f ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f);
+    T = normalize(cross(N, A));
+    B = normalize(cross(N, T));
+}
+
+float3 SampleGGXNormal(float2 Xi, float Roughness, float3 N)
+{
+    float Alpha = Roughness * Roughness;
+    float Phi = 2 * PI * Xi.x;
+    if (Roughness < 0.001f)
+    {
+        return N;
+    }
+    float CosTheta = sqrt((1 - Xi.y) / (1 + (Alpha * Alpha - 1) * Xi.y));
+    float SinTheta = sqrt(max(0.0f, 1 - CosTheta * CosTheta));
+    float3 HLocal = float3(SinTheta * cos(Phi), SinTheta * sin(Phi), CosTheta);
+    
+    float3 Tangent;
+    float3 BiTangent;
+    BuildOrthonormalBasis(N, Tangent, BiTangent);
+    float3 HWorld = HLocal.x * Tangent + HLocal.y * BiTangent + HLocal.z * N;
+    
+    return HWorld;
+}
+uint Hash(uint Value)
+{
+    uint State = Value * 747796405u + 2891336453u;
+    uint Word = ((State >> ((State >> 28u) + 4u)) ^ State) * 277803737u;
+
+    return (Word >> 22u) ^ Word;
+}
+
+float2 GenerateXi(uint2 Pixel, uint Width)
+{
+    uint Index = Pixel.y * Width + Pixel.x;
+    uint Hash1 = Hash(Index);
+    uint Hash2 = Hash(Hash1);
+    
+    //float의 32bit에서 정확도 24bit
+    //uint를 8비트만큼 이동시키고 2^24로 나누면 [0,1) 범위의 값이 나옴
+    float Xi1 = (Hash1 >> 8) / 16777216.0f;
+    float Xi2 = (Hash2 >> 8) / 16777216.0f;
+
+    return float2(Xi1, Xi2);
 }
 
 [shader("raygeneration")]
@@ -135,7 +184,7 @@ void RayGen()
 [shader("miss")]
 void Miss(inout RayPayload Payload)
 {
-    Payload.Color = float3(1.0f, 0.2f, 0.4f);
+    Payload.Color = float3(0.0f, 0.2f, 0.4f);
 }
 
 [shader("closesthit")]
@@ -289,7 +338,6 @@ void ReflectionRayGen()
 {
     uint2 Pixel = DispatchRaysIndex().xy;
     uint2 Dimensions = DispatchRaysDimensions().xy;
-    //RaytracedReflection[Pixel] = float4(1.0f, 1.0f, 0.1f, 1.0f);
     
     float Depth = HybridSceneDepth.Load(int3(Pixel, 0));
     if (Depth == 1.0f)
@@ -309,10 +357,19 @@ void ReflectionRayGen()
     WorldPosition.xyz /= WorldPosition.w;
     
     float3 WorldNormal = normalize(HybridGBufferB.Load(int3(Pixel, 0)).xyz);
-
+    float Roughness = HybridGBufferC.Load(int3(Pixel, 0)).x;
+    
+    float2 Xi = GenerateXi(Pixel, Dimensions.x);
+    float3 ReflectionNormal = SampleGGXNormal(Xi, Roughness, WorldNormal);
+    
     float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
- 
-    float3 OutDirection = normalize(reflect(InDirection, WorldNormal.xyz));
+    float3 OutDirection = normalize(reflect(InDirection, ReflectionNormal));
+    
+    if(dot(WorldNormal, OutDirection) <= 0.0f)
+    {
+        RaytracedReflection[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
+    }
     
     RayDesc ReflectionRay;
     ReflectionRay.Direction = OutDirection;
@@ -325,6 +382,6 @@ void ReflectionRayGen()
     
     TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ReflectionRay, Payload);
     
-//    float3 DebugColor = OutDirection * 0.5f + 0.5f;
+    //float3 DebugColor = OutDirection * 0.5f + 0.5f;
     RaytracedReflection[Pixel] = float4(Payload.Color, 1.0f);
 }
