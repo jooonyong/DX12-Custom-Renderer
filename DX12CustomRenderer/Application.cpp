@@ -35,7 +35,7 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 
 	MaterialData CubeMaterial{};
 	CubeMaterial.BaseColor = { 0.5f, 0.5f, 0.5f, 1.0f };
-	CubeMaterial.Roughness = 0.7f;
+	CubeMaterial.Roughness = 0.1f;
 	CubeMaterial.Metallic = 0.0f;
 	CubeData.Materials.push_back(CubeMaterial);
 

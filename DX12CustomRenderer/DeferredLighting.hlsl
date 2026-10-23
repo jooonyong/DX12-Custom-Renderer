@@ -209,7 +209,7 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
         ShadowFactor = ShadowMapTexture.Load(int3(Pixel, 0)).r;
         
         float3 ReflectionFresnel = FresnelSchlick(saturate(NdotV), F0);
-        ReflectionFactor = ReflectionTexture.Load(int3(Pixel, 0)).rgb * ReflectionFresnel * (1 - saturate(Roughness));
+        ReflectionFactor = ReflectionTexture.Load(int3(Pixel, 0)).rgb;// * ReflectionFresnel * (1 - saturate(Roughness));
     }
     else
     {

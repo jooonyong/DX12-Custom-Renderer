@@ -149,6 +149,35 @@ float2 GenerateXi(uint2 Pixel, uint Width, uint SampleIndex)
     return float2(Xi1, Xi2);
 }
 
+//샘플링된 반사광마다 가중치를 주기 위한 함수
+float3 EvaluateGGXReflectionWeight(float3 N, float3 V, float3 H, float Roughness, float3 F0)
+{
+    float3 L = reflect(-V, H);
+    float NdotV = dot(N, V);
+    float NdotL = dot(N, L);
+    float NdotH = dot(N, H);
+    float VdotH = dot(V, H);
+
+    if(NdotV <= 0.0f || NdotL <=0.0f || NdotH <=0.0f || VdotH <=0.0f)
+    {
+        return float3(0.0f, 0.0f, 0.0f);
+    }
+    
+    if(Roughness < 0.001f)
+    {
+        return FresnelSchlick(NdotV, F0);
+    }
+    
+    float3 Fresnel = FresnelSchlick(VdotH, F0);
+    float K = Roughness * Roughness / 2.0f;
+    float GV = NdotV / (NdotV * (1 - K) + K);
+    float GL = NdotL / (NdotL * (1 - K) + K);
+    float G = GV * GL;
+    
+    float3 Weight = Fresnel * G * VdotH / max(NdotH * NdotV, 0.00001f);
+    return Weight;
+}
+
 [shader("raygeneration")]
 void RayGen()
 {
@@ -360,7 +389,11 @@ void ReflectionRayGen()
     float Roughness = HybridGBufferC.Load(int3(Pixel, 0)).x;
     
     float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
-    float4 SampleReflection = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    float3 SampleReflection = float3(0.0f, 0.0f, 0.0f);
+    
+    float3 Albedo = HybridGBufferA.Load(int3(Pixel, 0)).rgb;
+    float Metallic = saturate(HybridGBufferC.Load(int3(Pixel, 0)).g);
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
     
     //ReflectionRay 무작위 4방향 Sampling
     for (int i = 0; i < 4;i++)
@@ -386,8 +419,10 @@ void ReflectionRayGen()
         
         TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ReflectionRay, Payload);
     
-        SampleReflection.xyz += Payload.Color;
+        float3 Weight = EvaluateGGXReflectionWeight(WorldNormal, -InDirection, ReflectionNormal, Roughness, F0);
+        SampleReflection += Payload.Color * Weight;
+    
     }
     
-    RaytracedReflection[Pixel] = float4(SampleReflection.xyz / 4.0f, 1.0f);
+    RaytracedReflection[Pixel] = float4(SampleReflection/ 4.0f, 1.0f);
 }
