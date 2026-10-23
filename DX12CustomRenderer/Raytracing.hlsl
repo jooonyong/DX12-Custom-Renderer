@@ -135,9 +135,9 @@ uint Hash(uint Value)
     return (Word >> 22u) ^ Word;
 }
 
-float2 GenerateXi(uint2 Pixel, uint Width)
+float2 GenerateXi(uint2 Pixel, uint Width, uint SampleIndex)
 {
-    uint Index = Pixel.y * Width + Pixel.x;
+    uint Index = Pixel.y * Width + Pixel.x + Hash(SampleIndex);
     uint Hash1 = Hash(Index);
     uint Hash2 = Hash(Hash1);
     
@@ -359,29 +359,35 @@ void ReflectionRayGen()
     float3 WorldNormal = normalize(HybridGBufferB.Load(int3(Pixel, 0)).xyz);
     float Roughness = HybridGBufferC.Load(int3(Pixel, 0)).x;
     
-    float2 Xi = GenerateXi(Pixel, Dimensions.x);
-    float3 ReflectionNormal = SampleGGXNormal(Xi, Roughness, WorldNormal);
-    
     float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
-    float3 OutDirection = normalize(reflect(InDirection, ReflectionNormal));
+    float4 SampleReflection = float4(0.0f, 0.0f, 0.0f, 1.0f);
     
-    if(dot(WorldNormal, OutDirection) <= 0.0f)
+    //ReflectionRay 무작위 4방향 Sampling
+    for (int i = 0; i < 4;i++)
     {
-        RaytracedReflection[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-        return;
+        float2 Xi = GenerateXi(Pixel, Dimensions.x, i);
+        float3 ReflectionNormal = SampleGGXNormal(Xi, Roughness, WorldNormal);
+            
+        float3 OutDirection = normalize(reflect(InDirection, ReflectionNormal));
+        
+        if (dot(WorldNormal, OutDirection) <= 0.0f)
+        {
+            continue;
+        }
+    
+        RayDesc ReflectionRay;
+        ReflectionRay.Direction = OutDirection;
+        ReflectionRay.Origin = WorldPosition.xyz + WorldNormal.xyz * 0.01f;
+        ReflectionRay.TMin = 0.001f;
+        ReflectionRay.TMax = 10000.0f;
+    
+        RayPayload Payload;
+        Payload.Color = float3(0.0f, 0.0f, 0.0f);
+        
+        TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ReflectionRay, Payload);
+    
+        SampleReflection.xyz += Payload.Color;
     }
     
-    RayDesc ReflectionRay;
-    ReflectionRay.Direction = OutDirection;
-    ReflectionRay.Origin = WorldPosition.xyz + WorldNormal.xyz * 0.01f;
-    ReflectionRay.TMin = 0.001f;
-    ReflectionRay.TMax = 10000.0f;
-    
-    RayPayload Payload;
-    Payload.Color = float3(0.0f, 0.0f, 0.0f);
-    
-    TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ReflectionRay, Payload);
-    
-    //float3 DebugColor = OutDirection * 0.5f + 0.5f;
-    RaytracedReflection[Pixel] = float4(Payload.Color, 1.0f);
+    RaytracedReflection[Pixel] = float4(SampleReflection.xyz / 4.0f, 1.0f);
 }
