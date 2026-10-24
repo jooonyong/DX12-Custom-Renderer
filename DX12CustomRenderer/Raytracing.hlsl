@@ -21,7 +21,7 @@ cbuffer InverseViewMatrix : register(b0)
 {
     float4x4 InverseViewMatrix;
     float3 CameraPosition;
-    float SampleFrameIndex;
+    uint SampleFrameIndex;
 }
 
 cbuffer DirectionalLightConstant : register(b1)

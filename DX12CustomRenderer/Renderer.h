@@ -58,6 +58,9 @@ struct FrameResource
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> DeferredPassConstantBuffer;
 	void* DeferredPassMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> ReflectionAccumulationConstantBuffer;
+	void* ReflectionAccumulationMappedData = nullptr;
 };
 
 struct ObjectConstant
@@ -78,7 +81,7 @@ struct DeferredPassConstant
 {
 	DirectX::XMFLOAT4X4 InverseViewMatrix;
 	DirectX::XMFLOAT3 CameraPosition;
-	float SampleFrameIndex;
+	UINT SampleFrameIndex;
 };
 
 struct DirectionalLightConstant
@@ -92,6 +95,14 @@ struct DirectionalLightConstant
 struct ShadowPassConstant
 {
 	DirectX::XMFLOAT4X4 LightViewProjectionMatrix;
+};
+
+struct ReflectionAccumulationConstant
+{
+	UINT Width;
+	UINT Height;
+	UINT HistoryFrameCount;
+	UINT Padding;
 };
 
 class Renderer
@@ -111,7 +122,8 @@ public:
 	void RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 	void RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 	void RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
-
+	void RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV);
+	
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 
 	bool CreateMainRootSignature();
@@ -308,4 +320,5 @@ private:
 	D3D12DescriptorHandle ReflectionHistorySRV1;
 	D3D12DescriptorHandle ReflectionHistoryUAV2;
 	D3D12DescriptorHandle ReflectionHistorySRV2;
+	UINT ReflectionHistoryFrameCount = 0;
 };

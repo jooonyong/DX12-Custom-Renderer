@@ -78,6 +78,8 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		CreateMappedConstantBuffer(sizeof(ShadowPassConstant), Frame[i].ShadowPassConstantBuffer, &Frame[i].ShadowPassMappedData);
 		//DeferredLighting ConstantBuffer
 		CreateMappedConstantBuffer(sizeof(DeferredPassConstant), Frame[i].DeferredPassConstantBuffer, &Frame[i].DeferredPassMappedData);
+		//ReflectionAccumulation ConstantBuffer
+		CreateMappedConstantBuffer(sizeof(ReflectionAccumulationConstant), Frame[i].ReflectionAccumulationConstantBuffer, &Frame[i].ReflectionAccumulationMappedData);
 	}
 	//CommandList는 1개만 있어도 됨
 	if (!CommandContext.Initialize(&Device, Frame[0].CommandAllocator.Get()))
@@ -495,6 +497,29 @@ void Renderer::RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* Command
 	CommandList->DispatchRays(&DispatchDesc);
 }
 
+void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV)
+{
+	ReflectionAccumulationConstant RAConstant{};
+	RAConstant.Width = Width;
+	RAConstant.Height = Height;
+	RAConstant.HistoryFrameCount = ReflectionHistoryFrameCount;
+
+	memcpy(Frame.ReflectionAccumulationMappedData, &RAConstant, sizeof(RAConstant));
+
+	CommandList->SetPipelineState(ReflectionAccumulationPipelineState.Get());
+	CommandList->SetComputeRootSignature(ReflectionAccumulationRootSignature.Get());
+
+	ID3D12DescriptorHeap* DescriptorHeaps[] = { SRVDescriptorAllocator.GetHeap() };
+	CommandList->SetDescriptorHeaps(_countof(DescriptorHeaps), DescriptorHeaps);
+
+	CommandList->SetComputeRootDescriptorTable(0, RaytracedReflectionSRV.GPU);
+	CommandList->SetComputeRootDescriptorTable(1, PreviousHistorySRV.GPU);
+	CommandList->SetComputeRootDescriptorTable(2, OutputHistoryUAV.GPU);
+	CommandList->SetComputeRootConstantBufferView(3, Frame.ReflectionAccumulationConstantBuffer->GetGPUVirtualAddress());
+
+	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
+}
+
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 {
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
@@ -550,6 +575,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	InverseViewData.SampleFrameIndex = ReflectionSampleFrameIndex;
 
 	memcpy(CurrentFrame.DeferredPassMappedData, &InverseViewData, sizeof(DeferredPassConstant));
+
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 	for (auto& Object : Objects)
 	{
@@ -1440,7 +1466,7 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 
 	RootParam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParam[1].DescriptorTable.NumDescriptorRanges = 1;
-	RootParam[1].DescriptorTable.pDescriptorRanges = &PrevTextureRange;
+	RootParam[1].DescriptorTable.pDescriptorRanges = &PrevTextureRange; //t1
 	RootParam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	RootParam[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
