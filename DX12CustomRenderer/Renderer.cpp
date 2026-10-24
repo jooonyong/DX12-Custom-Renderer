@@ -40,6 +40,11 @@ Renderer::~Renderer()
 			Frame[i].DeferredPassConstantBuffer->Unmap(0, nullptr);
 			Frame[i].DeferredPassMappedData = nullptr;
 		}
+		if (Frame[i].ReflectionAccumulationConstantBuffer)
+		{
+			Frame[i].ReflectionAccumulationConstantBuffer->Unmap(0, nullptr);
+			Frame[i].ReflectionAccumulationMappedData = nullptr;
+		}
 	}
 	if (DepthBuffer)
 	{
@@ -312,7 +317,7 @@ void Renderer::RenderShadowPass(ID3D12GraphicsCommandList* CommandList,std::vect
 	}
 }
 
-void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame)
+void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle* ReflectionInputSRV)
 {
 	ID3D12Resource* CurrentBackBuffer = SwapChain.GetCurrentBackBuffer();
 	UINT32 CurrentIndex = SwapChain.GetBackBufferIndex();
@@ -342,10 +347,10 @@ void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList
 	{
 		CommandList->SetGraphicsRootDescriptorTable(4, RaytracedShadowSRV.GPU); //t4
 		CommandList->SetGraphicsRoot32BitConstant(5, 1, 0);
+		//Hybrid 경로일때 ReflectionInputSRV nullptr이 아님
+		CommandList->SetGraphicsRootDescriptorTable(6, ReflectionInputSRV->GPU); //t5
 	}
 	
-	CommandList->SetGraphicsRootDescriptorTable(6, RaytracedReflectionSRV.GPU); //t5
-
 	CommandList->DrawInstanced(3, 1, 0, 0);
 }
 
@@ -518,6 +523,8 @@ void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* Comma
 	CommandList->SetComputeRootConstantBufferView(3, Frame.ReflectionAccumulationConstantBuffer->GetGPUVirtualAddress());
 
 	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
+
+	ReflectionHistoryFrameCount++;
 }
 
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
@@ -575,6 +582,13 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	InverseViewData.SampleFrameIndex = ReflectionSampleFrameIndex;
 
 	memcpy(CurrentFrame.DeferredPassMappedData, &InverseViewData, sizeof(DeferredPassConstant));
+
+	ID3D12Resource* PrevHistory = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistory1.Get() : ReflectionHistory2.Get();
+	ID3D12Resource* OutputHistory = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistory2.Get() : ReflectionHistory1.Get();
+
+	D3D12DescriptorHandle PrevSRV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistorySRV1 : ReflectionHistorySRV2;
+	D3D12DescriptorHandle OutputSRV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistorySRV2 : ReflectionHistorySRV1;
+	D3D12DescriptorHandle OutputUAV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistoryUAV1 : ReflectionHistoryUAV2;
 
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 	for (auto& Object : Objects)
@@ -679,6 +693,18 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				Renderer::RenderRaytracedReflectionPass(RaytracingCommandList, CurrentFrame);
 			}
 		);
+		Graph.AddPass("ReflectionAccumulationPass",
+			{
+				{ RaytracedReflection.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ PrevHistory, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ OutputHistory, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write},
+			},
+			[&, PrevSRV, OutputUAV](ID3D12GraphicsCommandList* CommandList)
+			{
+				ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
+				Renderer::RenderReflectionAccumulationPass(RaytracingCommandList, CurrentFrame, PrevSRV, OutputUAV);
+			}
+		);
 		Graph.AddPass("DeferredLightingPass",
 			{
 				{ GBufferA.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
@@ -686,12 +712,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{ GBufferC.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ RaytracedShadowMask.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
-				{ RaytracedReflection.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ OutputHistory, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ SceneColor.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write}
 			},
-			[&](ID3D12GraphicsCommandList* CommandList)
+			[&, OutputSRV](ID3D12GraphicsCommandList* CommandList)
 			{
-				Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
+				Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame, &OutputSRV);
 			}
 		);
 	}

@@ -3,7 +3,7 @@ Texture2D GBufferB : register(t1);
 Texture2D GBufferC : register(t2);
 Texture2D SceneDepth : register(t3);
 Texture2D ShadowMapTexture : register(t4);
-Texture2D ReflectionTexture : register(t5);
+Texture2D ReflectionHistoryTexture : register(t5);
 
 SamplerState PointSampler : register(s0);
 SamplerState ShadowMapSampler : register(s1);
@@ -209,7 +209,7 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
         ShadowFactor = ShadowMapTexture.Load(int3(Pixel, 0)).r;
         
         float3 ReflectionFresnel = FresnelSchlick(saturate(NdotV), F0);
-        ReflectionFactor = ReflectionTexture.Load(int3(Pixel, 0)).rgb;// * ReflectionFresnel * (1 - saturate(Roughness));
+        ReflectionFactor = ReflectionHistoryTexture.Load(int3(Pixel, 0)).rgb; // * ReflectionFresnel * (1 - saturate(Roughness));
     }
     else
     {

@@ -117,7 +117,7 @@ public:
 
 	void RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex);
 	void RenderShadowPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame);
-	void RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
+	void RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle* ReflectionInputSRV = nullptr);
 	void RenderToneMapping(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame);
 	void RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 	void RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
