@@ -346,11 +346,10 @@ void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList
 	else if (CurrentRenderMode == RenderMode::E_Hybrid)
 	{
 		CommandList->SetGraphicsRootDescriptorTable(4, RaytracedShadowSRV.GPU); //t4
-		CommandList->SetGraphicsRoot32BitConstant(5, 1, 0);
-		//Hybrid 경로일때 ReflectionInputSRV nullptr이 아님
-		CommandList->SetGraphicsRootDescriptorTable(6, ReflectionInputSRV->GPU); //t5
+		CommandList->SetGraphicsRoot32BitConstant(5, 1, 0);		
 	}
-	
+	auto ReflectionHandle = ReflectionInputSRV ? ReflectionInputSRV->GPU : RaytracedReflectionSRV.GPU;
+	CommandList->SetGraphicsRootDescriptorTable(6, ReflectionHandle); //t5
 	CommandList->DrawInstanced(3, 1, 0, 0);
 }
 
@@ -523,8 +522,6 @@ void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* Comma
 	CommandList->SetComputeRootConstantBufferView(3, Frame.ReflectionAccumulationConstantBuffer->GetGPUVirtualAddress());
 
 	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
-
-	ReflectionHistoryFrameCount++;
 }
 
 void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
@@ -588,7 +585,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	D3D12DescriptorHandle PrevSRV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistorySRV1 : ReflectionHistorySRV2;
 	D3D12DescriptorHandle OutputSRV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistorySRV2 : ReflectionHistorySRV1;
-	D3D12DescriptorHandle OutputUAV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistoryUAV1 : ReflectionHistoryUAV2;
+	D3D12DescriptorHandle OutputUAV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistoryUAV2 : ReflectionHistoryUAV1;
 
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 	for (auto& Object : Objects)
@@ -761,6 +758,11 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	CommandContext.Close();
 	CommandQueue.Execute(&CommandContext);
+	if (CurrentRenderMode == RenderMode::E_Hybrid)
+	{
+		ReflectionHistoryFrameCount++;
+	}
+
 	SwapChain.Present();
 
 	Graph.Reset();
