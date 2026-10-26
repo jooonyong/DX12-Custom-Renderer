@@ -163,6 +163,8 @@ public:
 	void UpdateShadowViewport(UINT Width, UINT Height);
 	void UpdateViewport(UINT Width, UINT Height);
 
+	void UpdateReflectionHistory(const DirectX::XMMATRIX& ViewProjection);
+
 	//Application 호출용 임시 함수
 	std::shared_ptr<RenderModel> CreateRenderModel(const std::string& FilePath);
 	std::shared_ptr<RenderModel> CreateRenderModel(const ModelData& Data);
@@ -321,4 +323,7 @@ private:
 	D3D12DescriptorHandle ReflectionHistoryUAV2;
 	D3D12DescriptorHandle ReflectionHistorySRV2;
 	UINT ReflectionHistoryFrameCount = 0;
+
+	DirectX::XMFLOAT4X4 PreviousReflectionViewProjection{};
+	bool bPrevReflectionViewProjection = false;
 };

@@ -580,6 +580,11 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	memcpy(CurrentFrame.DeferredPassMappedData, &InverseViewData, sizeof(DeferredPassConstant));
 
+	if (CurrentRenderMode == RenderMode::E_Hybrid)
+	{
+		UpdateReflectionHistory(ViewProjection);
+	}
+
 	ID3D12Resource* PrevHistory = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistory1.Get() : ReflectionHistory2.Get();
 	ID3D12Resource* OutputHistory = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistory2.Get() : ReflectionHistory1.Get();
 
@@ -2276,6 +2281,37 @@ void Renderer::UpdateViewport(UINT Width, UINT Height)
 	ScissorRect.top = 0.0f;
 	ScissorRect.right = static_cast<LONG>(Width);
 	ScissorRect.bottom = static_cast<LONG>(Height);
+}
+
+void Renderer::UpdateReflectionHistory(const DirectX::XMMATRIX& ViewProjection)
+{
+	DirectX::XMFLOAT4X4 Current;
+	DirectX::XMStoreFloat4x4(&Current, ViewProjection);
+
+	bool bChanged = !bPrevReflectionViewProjection;
+
+	if (bPrevReflectionViewProjection)
+	{
+		for (int row = 0; row < 4; row++)
+		{
+			for (int col = 0; col < 4; col++)
+			{
+				float Difference = std::fabs(Current.m[row][col] - PreviousReflectionViewProjection.m[row][col]);
+				if (Difference > 0.00001f)
+				{
+					bChanged = true;
+					break;
+				}
+			}
+		}
+
+		if (bChanged)
+		{
+			ReflectionHistoryFrameCount = 0;
+		}
+	}
+	PreviousReflectionViewProjection = Current;
+	bPrevReflectionViewProjection = true;
 }
 
 std::shared_ptr<RenderModel> Renderer::CreateRenderModel(const std::string& FilePath)
