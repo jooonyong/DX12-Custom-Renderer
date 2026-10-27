@@ -585,12 +585,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		UpdateReflectionHistory(ViewProjection);
 	}
 
-	ID3D12Resource* PrevHistory = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistory1.Get() : ReflectionHistory2.Get();
-	ID3D12Resource* OutputHistory = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistory2.Get() : ReflectionHistory1.Get();
+	ID3D12Resource* PrevHistory = ReflectionHistoryWriteIndex == 0 ? ReflectionHistory1.Get() : ReflectionHistory2.Get();
+	ID3D12Resource* OutputHistory = ReflectionHistoryWriteIndex == 0 ? ReflectionHistory2.Get() : ReflectionHistory1.Get();
 
-	D3D12DescriptorHandle PrevSRV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistorySRV1 : ReflectionHistorySRV2;
-	D3D12DescriptorHandle OutputSRV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistorySRV2 : ReflectionHistorySRV1;
-	D3D12DescriptorHandle OutputUAV = ReflectionHistoryFrameCount % 2 == 0 ? ReflectionHistoryUAV2 : ReflectionHistoryUAV1;
+	D3D12DescriptorHandle PrevSRV = ReflectionHistoryWriteIndex == 0 ? ReflectionHistorySRV1 : ReflectionHistorySRV2;
+	D3D12DescriptorHandle OutputSRV = ReflectionHistoryWriteIndex == 0 ? ReflectionHistorySRV2 : ReflectionHistorySRV1;
+	D3D12DescriptorHandle OutputUAV = ReflectionHistoryWriteIndex == 0 ? ReflectionHistoryUAV2 : ReflectionHistoryUAV1;
 
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 	for (auto& Object : Objects)
@@ -765,7 +765,11 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	CommandQueue.Execute(&CommandContext);
 	if (CurrentRenderMode == RenderMode::E_Hybrid)
 	{
-		ReflectionHistoryFrameCount++;
+		if (ReflectionHistoryFrameCount < 64)
+		{
+			ReflectionHistoryFrameCount++;
+		}
+		ReflectionHistoryWriteIndex = 1 - ReflectionHistoryWriteIndex;
 	}
 
 	SwapChain.Present();
@@ -2304,12 +2308,13 @@ void Renderer::UpdateReflectionHistory(const DirectX::XMMATRIX& ViewProjection)
 				}
 			}
 		}
-
-		if (bChanged)
-		{
-			ReflectionHistoryFrameCount = 0;
-		}
 	}
+
+	if (bChanged)
+	{
+		ReflectionHistoryFrameCount = 0;
+	}
+
 	PreviousReflectionViewProjection = Current;
 	bPrevReflectionViewProjection = true;
 }

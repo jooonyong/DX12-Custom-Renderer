@@ -111,7 +111,12 @@ public:
 	Renderer();
 	~Renderer();
 
-	void SetRenderMode(RenderMode Mode) { CurrentRenderMode = Mode; }
+	void SetRenderMode(RenderMode Mode)
+	{ 
+		CurrentRenderMode = Mode; 
+		ReflectionHistoryFrameCount = 0;
+		bPrevReflectionViewProjection = false;
+	}
 
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
@@ -322,6 +327,8 @@ private:
 	D3D12DescriptorHandle ReflectionHistorySRV1;
 	D3D12DescriptorHandle ReflectionHistoryUAV2;
 	D3D12DescriptorHandle ReflectionHistorySRV2;
+
+	UINT ReflectionHistoryWriteIndex = 1;
 	UINT ReflectionHistoryFrameCount = 0;
 
 	DirectX::XMFLOAT4X4 PreviousReflectionViewProjection{};

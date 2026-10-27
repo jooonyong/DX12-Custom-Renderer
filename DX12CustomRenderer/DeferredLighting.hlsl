@@ -14,7 +14,7 @@ cbuffer InverseViewMatrix : register(b0)
 {
     float4x4 InverseViewMatrix;
     float3 CameraPosition;
-    float SampleFrameIndex;
+    uint SampleFrameIndex;
 }
 
 cbuffer DirLgtBuffer : register(b1)
