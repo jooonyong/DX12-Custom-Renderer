@@ -4,6 +4,11 @@ RWTexture2D<float4> OutHistory : register(u0);
 Texture2D<float4> GBufferB : register(t2); //normal
 Texture2D<float> SceneDepth : register(t3); //Depth
 
+static const float GaussianKernel[5] =
+{
+    1.0f, 4.0f, 6.0f, 4.0f, 1.0f
+};
+
 cbuffer AccumulationConstants : register(b0)
 {
     uint Width;
@@ -61,9 +66,9 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     
     float3 WorldPosition = ReconstructWorldPosition(Pixel, Depth);
     
-    for (int i = -1; i <= 1; i++)
+    for (int i = -2; i <= 2; i++)
     {
-        for (int j = -1; j <= 1;j++)
+        for (int j = -2; j <= 2;j++)
         {
             int2 Offset = int2(i, j);
             if ((Pixel + Offset).x < 0 || (Pixel + Offset).y < 0 || (Pixel + Offset).x >= Width || (Pixel + Offset).y >= Height)
@@ -71,28 +76,29 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
                 continue;
             }
             
-            uint GausianWeight;
-            if (abs(i) + abs(j) == 2)
-            {
-                GausianWeight = 1;
-            }
-            else if(abs(i)+abs(j) == 1)
-            {
-                GausianWeight = 2;
-            }
-            else if(abs(i)+abs(j) == 0)
-            {
-                GausianWeight = 4;
-            }
+            float GausianWeight = GaussianKernel[i + 2] * GaussianKernel[j + 2];;
+       
             float NeighborDepth = SceneDepth.Load(int3(Pixel + Offset, 0));
+            if (NeighborDepth >= 1.0f)
+            {
+                continue;
+            }
             float3 NeighborPosition = ReconstructWorldPosition(Pixel + Offset, NeighborDepth);
             float Distance = abs(dot(NeighborPosition - WorldPosition, Normal));
             float DepthWeight = exp(-Distance / 0.05f);
             
-            float3 NeighborNormal = normalize(GBufferB.Load(int3(Pixel + Offset, 0)).xyz);
+            float3 NeighborNormal = GBufferB.Load(int3(Pixel + Offset, 0)).xyz;
+            float NeighborLengthSq = dot(NeighborNormal, NeighborNormal);
+
+            if (!isfinite(NeighborLengthSq) || NeighborLengthSq <= 1e-8f)
+            {
+                continue;
+            }
+
+            NeighborNormal *= rsqrt(NeighborLengthSq);
             NormalWeight = pow(saturate(dot(Normal, NeighborNormal)), 16);
             
-            float CombinedWeight = float(GausianWeight) * NormalWeight * DepthWeight;
+            float CombinedWeight = GausianWeight * NormalWeight;// * DepthWeight;
             
             CurrentColor += (CurrentReflection.Load(int3(Pixel + Offset, 0)).xyz) * CombinedWeight;
             TotalWeight += CombinedWeight;
