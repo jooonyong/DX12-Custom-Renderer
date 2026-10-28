@@ -62,7 +62,7 @@ VSOutput VSMain(VSInput Input)
 
     Output.UV = Input.UV;
     Output.WorldNormal = normalize(WorldNormal);
-    Output.WorldTangent = float4(normalize(T), Input.Tangent.w);
+    Output.WorldTangent = float4(T, Input.Tangent.w);
 
     return Output;
 }
@@ -84,6 +84,7 @@ GBufferOutput PSMain(VSOutput Input)
    
     //그램슈미트 직교화
     T = normalize(T - N * dot(T, N)); 
+
     float3 B = normalize(cross(N, T)) * Input.WorldTangent.w;  //BiTangent
     float3 NormalTS = NormalMapTexture.Sample(LinearSampler, Input.UV).xyz;
 

@@ -98,7 +98,7 @@ float GeometrySmith(float3 N, float3 V, float3 L, float Roughness)
 
 float3 FresnelSchlick(float CosTheta, float3 F0)
 {
-    return F0 + (1.0f - F0) * pow(1.0f - CosTheta, 5.0f);
+    return F0 + (1.0f - F0) * pow(1.0f - saturate(CosTheta), 5.0f);
 }
 
 void BuildOrthonormalBasis(float3 N, out float3 T, out float3 B)
@@ -125,7 +125,7 @@ float3 SampleGGXNormal(float2 Xi, float Roughness, float3 N)
     BuildOrthonormalBasis(N, Tangent, BiTangent);
     float3 HWorld = HLocal.x * Tangent + HLocal.y * BiTangent + HLocal.z * N;
     
-    return HWorld;
+    return normalize(HWorld);
 }
 uint Hash(uint Value)
 {
@@ -174,7 +174,7 @@ float3 EvaluateGGXReflectionWeight(float3 N, float3 V, float3 H, float Roughness
     float GL = NdotL / (NdotL * (1 - K) + K);
     float G = GV * GL;
     
-    float3 Weight = Fresnel * G * VdotH / max(NdotH * NdotV, 0.00001f);
+    float3 Weight = Fresnel * G * VdotH / max(NdotH * NdotV, 0.0001f);
     return Weight;
 }
 
@@ -385,7 +385,24 @@ void ReflectionRayGen()
 
     WorldPosition.xyz /= WorldPosition.w;
     
-    float3 WorldNormal = normalize(HybridGBufferB.Load(int3(Pixel, 0)).xyz);
+    float3 RawNormal = HybridGBufferB.Load(int3(Pixel, 0)).xyz;
+    if (any(isnan(RawNormal)) || any(isinf(RawNormal)))
+    {
+        RaytracedReflection[Pixel] = float4(1, 0, 0, 1); // 빨강
+        return;
+    }
+    
+    float NormalLengthSq = dot(RawNormal, RawNormal);
+
+    // 정규화할 수 없는 길이인 경우
+    if (NormalLengthSq < 1e-8f)
+    {
+        RaytracedReflection[Pixel] = float4(1, 1, 0, 1); // 노랑
+        return;
+    }
+
+    float3 WorldNormal = RawNormal * rsqrt(NormalLengthSq);
+    
     float Roughness = HybridGBufferC.Load(int3(Pixel, 0)).x;
     
     float3 InDirection = normalize(WorldPosition.xyz - CameraPosition);
@@ -418,8 +435,13 @@ void ReflectionRayGen()
         Payload.Color = float3(0.0f, 0.0f, 0.0f);
         
         TraceRay(SceneAS, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ReflectionRay, Payload);
-    
+
         float3 Weight = EvaluateGGXReflectionWeight(WorldNormal, -InDirection, ReflectionNormal, Roughness, F0);
+        if (any(isnan(F0)) || any(isinf(F0)))
+        {
+            RaytracedReflection[Pixel] = float4(0, 1, 0, 1); // 초록
+            return;
+        }
         SampleReflection += Payload.Color * Weight;
     
     }

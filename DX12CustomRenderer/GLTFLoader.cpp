@@ -297,6 +297,10 @@ bool GLTFLoader::GenerateTangent(MeshData& Mesh)
 		float DV2 =	V2.UV.y - V0.UV.y;
 
 		const float Det = DU1 * DV2 - DV1 * DU2;
+		if (!std::isfinite(Det) || std::fabs(Det) <= 1e-8f)
+		{
+			continue;
+		}
 
 		XMVECTOR Tangent = (DV2 * Edge1 - DV1 * Edge2) / Det;
 		XMVECTOR Bitangent = (-DU2 * Edge1 + DU1 * Edge2) / Det;
@@ -322,9 +326,18 @@ bool GLTFLoader::GenerateTangent(MeshData& Mesh)
 		XMVECTOR N = XMLoadFloat3(&V.Normal);
 
 		N = XMVector3Normalize(N);
+
 		XMVECTOR T = XMLoadFloat3(&TangentSums[i]);
 		//그램슈미트 직교화로 T의 N성분 제거
 		T = T - N * XMVector3Dot(N, T);
+
+		const float LengthSq = XMVectorGetX(XMVector3LengthSq(T));
+		if (!std::isfinite(LengthSq) || LengthSq <= 1e-12f)
+		{
+			V.Tangent = { 0.0f, 0.0f, 0.0f, 1.0f };
+			continue;
+		}
+		T = XMVector3Normalize(T);
 
 		XMVECTOR B = XMLoadFloat3(&BitangentSums[i]);
 		XMVECTOR CalculatedB = XMVector3Cross(N, T);
