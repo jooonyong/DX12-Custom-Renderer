@@ -111,7 +111,7 @@ float CalculateShadowFactor(float3 WorldPosition)
 
     float2 TexelSize = 1.0f / float2(Width, Height);
 
-    float ShadowBias = 0.001f;
+    float ShadowBias = 0.0004f;
     float LitCount = 0.0f;
 
     //3*3 PCF
@@ -210,11 +210,14 @@ float4 PSMain(VSOutput Input) : SV_TARGET0
         
         float3 ReflectionFresnel = FresnelSchlick(saturate(NdotV), F0);
         ReflectionFactor = ReflectionHistoryTexture.Load(int3(Pixel, 0)).rgb; // * ReflectionFresnel * (1 - saturate(Roughness));
+        
+        //return float4(ShadowFactor, ShadowFactor, ShadowFactor, 1.0f);
     }
     else
     {
         //Raster
         ShadowFactor = CalculateShadowFactor(WorldPosition);
+        //return float4(ShadowFactor, ShadowFactor, ShadowFactor, 1.0f);
     }
     
     float3 kS = F;

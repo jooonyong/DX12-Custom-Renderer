@@ -520,6 +520,8 @@ void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* Comma
 	CommandList->SetComputeRootDescriptorTable(1, PreviousHistorySRV.GPU);
 	CommandList->SetComputeRootDescriptorTable(2, OutputHistoryUAV.GPU);
 	CommandList->SetComputeRootConstantBufferView(3, Frame.ReflectionAccumulationConstantBuffer->GetGPUVirtualAddress());
+	
+	CommandList->SetComputeRootDescriptorTable(4, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 1));
 
 	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
 }
@@ -698,8 +700,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		Graph.AddPass("ReflectionAccumulationPass",
 			{
 				{ RaytracedReflection.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ GBufferB.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ PrevHistory, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ OutputHistory, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write},
+
 			},
 			[&, PrevSRV, OutputUAV](ID3D12GraphicsCommandList* CommandList)
 			{
@@ -1495,7 +1499,14 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	OutTextureRange.RegisterSpace = 0;
 	OutTextureRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParam[4]{};
+	D3D12_DESCRIPTOR_RANGE NormalRange{};
+	NormalRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	NormalRange.NumDescriptors = 1;
+	NormalRange.BaseShaderRegister = 2;
+	NormalRange.RegisterSpace = 0;
+	NormalRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParam[5]{};
 	RootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParam[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParam[0].DescriptorTable.pDescriptorRanges = &ReflectionTextureRange; //t0 ReflectionTexture;
@@ -1515,6 +1526,11 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	RootParam[3].Descriptor.RegisterSpace = 0;
 	RootParam[3].Descriptor.ShaderRegister = 0; //b0 AccumulationConstants
 	RootParam[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParam[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[4].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[4].DescriptorTable.pDescriptorRanges = &NormalRange; //t2 NormalGBuffer
+	RootParam[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
