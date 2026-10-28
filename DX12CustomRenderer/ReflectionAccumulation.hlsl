@@ -12,19 +12,55 @@ cbuffer AccumulationConstants : register(b0)
     uint Padding;
 }
 
+cbuffer ReconstructionConstants : register(b1)
+{
+    float4x4 InverseViewProjection;
+}
+
+float3 ReconstructWorldPosition(int2 Pixel, float Depth)
+{
+    float2 UV = (float2(Pixel) + 0.5f) / float2(Width, Height);
+    float2 NDC = UV * 2.0f - 1.0f;
+    NDC.y = -NDC.y;
+    
+    float4 Position = float4(NDC.x, NDC.y, Depth, 1.0f);
+    float4 WorldPosition = mul(Position, InverseViewProjection);
+    WorldPosition.xyz /= WorldPosition.w;
+    
+    return WorldPosition.xyz;
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    uint2 Pixel = DispatchThreadID.xy;
+    int2 Pixel = DispatchThreadID.xy;
     if(Pixel.x >= Width || Pixel.y >= Height)
     {
         return;
     }
     
     float3 CurrentColor = float3(0.0f, 0.0f, 0.0f);
-    float3 Normal = normalize(GBufferB.Load(int3(Pixel, 0)).xyz);
+    float3 Normal = GBufferB.Load(int3(Pixel, 0)).xyz;
+    float NormalLengthSq = dot(Normal, Normal);
+    if (!isfinite(NormalLengthSq) || NormalLengthSq <= 1e-8f)
+    {
+        OutHistory[Pixel] = float4(0, 0, 0, 1);
+        return;
+    }
+
+    Normal = Normal * rsqrt(NormalLengthSq);
     float NormalWeight = 0;
     float TotalWeight = 0;
+    
+    float Depth = SceneDepth.Load(int3(Pixel, 0));
+    if (Depth >= 1.0f)
+    {
+        OutHistory[Pixel] = float4(0, 0, 0, 1);
+        return;
+    }
+    
+    float3 WorldPosition = ReconstructWorldPosition(Pixel, Depth);
+    
     for (int i = -1; i <= 1; i++)
     {
         for (int j = -1; j <= 1;j++)
@@ -48,11 +84,15 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
             {
                 GausianWeight = 4;
             }
-     
+            float NeighborDepth = SceneDepth.Load(int3(Pixel + Offset, 0));
+            float3 NeighborPosition = ReconstructWorldPosition(Pixel + Offset, NeighborDepth);
+            float Distance = abs(dot(NeighborPosition - WorldPosition, Normal));
+            float DepthWeight = exp(-Distance / 0.05f);
+            
             float3 NeighborNormal = normalize(GBufferB.Load(int3(Pixel + Offset, 0)).xyz);
             NormalWeight = pow(saturate(dot(Normal, NeighborNormal)), 16);
             
-            float CombinedWeight = float(GausianWeight) * NormalWeight;
+            float CombinedWeight = float(GausianWeight) * NormalWeight * DepthWeight;
             
             CurrentColor += (CurrentReflection.Load(int3(Pixel + Offset, 0)).xyz) * CombinedWeight;
             TotalWeight += CombinedWeight;
@@ -71,7 +111,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
     float3 PrevColor = PrevHistory.Load(int3(Pixel, 0)).xyz;
-    if (any(isnan(PrevHistory.Load(int3(Pixel, 0)).xyz)) || any(isinf(PrevHistory.Load(int3(Pixel, 0)).xyz)))
+    if (any(isnan(PrevColor)) || any(isinf(PrevColor)))
     {
         OutHistory[Pixel] = float4(0.0f, 1.0f, 0.0f, 1.0f);
         return;

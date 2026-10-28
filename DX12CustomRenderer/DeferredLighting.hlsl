@@ -111,7 +111,7 @@ float CalculateShadowFactor(float3 WorldPosition)
 
     float2 TexelSize = 1.0f / float2(Width, Height);
 
-    float ShadowBias = 0.0004f;
+    float ShadowBias = 0.0006f;
     float LitCount = 0.0f;
 
     //3*3 PCF

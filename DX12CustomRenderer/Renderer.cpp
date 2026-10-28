@@ -520,8 +520,9 @@ void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* Comma
 	CommandList->SetComputeRootDescriptorTable(1, PreviousHistorySRV.GPU);
 	CommandList->SetComputeRootDescriptorTable(2, OutputHistoryUAV.GPU);
 	CommandList->SetComputeRootConstantBufferView(3, Frame.ReflectionAccumulationConstantBuffer->GetGPUVirtualAddress());
-	
 	CommandList->SetComputeRootDescriptorTable(4, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 1));
+	CommandList->SetComputeRootDescriptorTable(5, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 3));
+	CommandList->SetComputeRootConstantBufferView(6, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress());
 
 	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
 }
@@ -701,6 +702,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			{
 				{ RaytracedReflection.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ GBufferB.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ PrevHistory, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ OutputHistory, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write},
 
@@ -1506,7 +1508,14 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	NormalRange.RegisterSpace = 0;
 	NormalRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParam[5]{};
+	D3D12_DESCRIPTOR_RANGE DepthRange{};
+	DepthRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	DepthRange.NumDescriptors = 1;
+	DepthRange.BaseShaderRegister = 3;
+	DepthRange.RegisterSpace = 0;
+	DepthRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParam[7]{};
 	RootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParam[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParam[0].DescriptorTable.pDescriptorRanges = &ReflectionTextureRange; //t0 ReflectionTexture;
@@ -1531,6 +1540,16 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	RootParam[4].DescriptorTable.NumDescriptorRanges = 1;
 	RootParam[4].DescriptorTable.pDescriptorRanges = &NormalRange; //t2 NormalGBuffer
 	RootParam[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParam[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[5].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[5].DescriptorTable.pDescriptorRanges = &DepthRange; //t3 SceneDepthGBuffer
+	RootParam[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	RootParam[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	RootParam[6].Descriptor.RegisterSpace = 0;
+	RootParam[6].Descriptor.ShaderRegister = 1;
+	RootParam[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
