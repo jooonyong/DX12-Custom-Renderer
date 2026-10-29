@@ -53,6 +53,11 @@ bool WindowsWindow::IsCloseRequested() const
 	return bCloseRequest;
 }
 
+void WindowsWindow::SetTitle(const wchar_t* NewTitle)
+{
+	SetWindowTextW(Hwnd, NewTitle);
+}
+
 bool WindowsWindow::RegisterWindowClass()
 {
 	WNDCLASS WindowClass = { };

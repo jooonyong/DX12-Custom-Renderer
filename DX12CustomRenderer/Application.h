@@ -34,7 +34,8 @@ public:
 
 private:
 	void ProcessMessages();
-	void Update(float DeltaTime);
+	void Update(float& DeltaTime);
+	void UpdateWindowTitle(LARGE_INTEGER& CurrentTime);
 
 	void StartRenderThread();
 	void StopRenderThread();
@@ -47,8 +48,11 @@ private:
 	Camera MainCamera;
 	RenderMode RequestedMode = RenderMode::E_Raster;
 
+	uint64_t PreviousPresentedFrameCount = 0;
+
 	LARGE_INTEGER Frequency;
 	LARGE_INTEGER PreviousTime;
+	LARGE_INTEGER PreviousTimeForFrameCount;
 
 	std::thread RenderThread;
 	std::mutex FrameQueueMutex;

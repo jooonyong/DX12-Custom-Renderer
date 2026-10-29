@@ -72,11 +72,11 @@ void Application::Run()
 	StartRenderThread();
 	
 	try{
+		QueryPerformanceCounter(&PreviousTime);
 		while (bRunning)
 		{
 			LARGE_INTEGER CurrentTime;
 			QueryPerformanceCounter(&CurrentTime);
-
 			float DeltaTime = static_cast<float>((CurrentTime.QuadPart - PreviousTime.QuadPart)) / static_cast<float>(Frequency.QuadPart);
 			PreviousTime = CurrentTime;
 
@@ -89,9 +89,14 @@ void Application::Run()
 			//Scene, Camera 상태 업데이트
 			Update(DeltaTime);
 
-			RenderFrameData RenderThreadData = BuildRenderFrameData();
-			SubmitRenderFrame(std::move(RenderThreadData));
+			UpdateWindowTitle(CurrentTime);
 
+			RenderFrameData RenderThreadData = BuildRenderFrameData();
+			bool bSubmitted = SubmitRenderFrame(std::move(RenderThreadData));
+			if (!bSubmitted)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
 			NextFrameNumber++;
 			//그리기 관련 RenderCommand
 			//Renderer.RenderFrame(RenderThreadData.MainScene, RenderThreadData.MainCamera);
@@ -187,7 +192,7 @@ void Application::ProcessMessages()
 	}
 }
 
-void Application::Update(float DeltaTime)
+void Application::Update(float& DeltaTime)
 {
 	const float MoveSpeed = 3.0f;
 
@@ -236,6 +241,25 @@ void Application::Update(float DeltaTime)
 	{
 		RequestedMode = RenderMode::E_Hybrid;
 	}
+}
+
+void Application::UpdateWindowTitle(LARGE_INTEGER& CurrentTime)
+{
+	float FPSDelta = static_cast<float>((CurrentTime.QuadPart - PreviousTimeForFrameCount.QuadPart)) / static_cast<float>(Frequency.QuadPart);
+	if (FPSDelta < 0.1f)
+	{
+		return;
+	}
+   
+	uint64_t CurrentCount = Renderer.GetPresentedFrameCount();
+	float FPS = (CurrentCount - PreviousPresentedFrameCount) / FPSDelta;
+
+	wchar_t TitleBuffer[128]{};
+	swprintf_s(TitleBuffer, _countof(TitleBuffer), L"CustomRenderer | FPS: %.1f", FPS);
+	Wnd.SetTitle(TitleBuffer);
+
+	PreviousPresentedFrameCount = CurrentCount;
+	QueryPerformanceCounter(&PreviousTimeForFrameCount);
 }
 
 void Application::StartRenderThread()

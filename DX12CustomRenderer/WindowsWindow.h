@@ -15,6 +15,9 @@ public:
 
 	void ConsumeMouseDelta(int& DeltaX, int& DeltaY);
 	bool IsCloseRequested() const;
+
+	void SetTitle(const wchar_t* NewTitle);
+
 private:
 	bool RegisterWindowClass();
 	LRESULT HandleMessage(HWND Hwnd, UINT Message, WPARAM WParam,LPARAM LParam);

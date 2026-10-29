@@ -779,6 +779,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	}
 
 	SwapChain.Present();
+	PresentedFrameCount.fetch_add(1);
 
 	Graph.Reset();
 

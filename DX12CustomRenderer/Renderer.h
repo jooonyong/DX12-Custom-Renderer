@@ -20,6 +20,7 @@
 #include "DirectXMath.h"
 #include <vector>
 #include <memory>
+#include <atomic>
 //#include <wincodec.h>
 //#include <wrl.h>
 //
@@ -122,6 +123,11 @@ public:
 		bPrevReflectionViewProjection = false;
 	}
 
+	uint64_t GetPresentedFrameCount() const
+	{
+		return PresentedFrameCount.load();
+	}
+
 	bool Initialize(HWND Hwnd, UINT Width, UINT Height);
 
 	void RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex);
@@ -199,6 +205,7 @@ public:
 
 private:
 	RenderMode CurrentRenderMode = RenderMode::E_Raster;
+	std::atomic<uint64_t> PresentedFrameCount{ 0 };
 
 	D3D12Device Device;
 	D3D12CommandQueue CommandQueue;
