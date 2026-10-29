@@ -110,7 +110,6 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
         OutHistory[Pixel] = float4(1.0f, 0.0f, 1.0f, 1.0f);
         return;
     }
-    
     if(HistoryFrameCount == 0)
     {
         OutHistory[Pixel] = float4(CurrentColor, 1.0f);

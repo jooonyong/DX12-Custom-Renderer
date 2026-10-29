@@ -113,6 +113,10 @@ public:
 
 	void SetRenderMode(RenderMode Mode)
 	{ 
+		if (CurrentRenderMode == Mode)
+		{
+			return;
+		}
 		CurrentRenderMode = Mode; 
 		ReflectionHistoryFrameCount = 0;
 		bPrevReflectionViewProjection = false;

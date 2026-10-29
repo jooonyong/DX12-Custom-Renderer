@@ -4,6 +4,17 @@
 #include "Scene.h"
 #include "Renderer.h"
 #include "Camera.h"
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+
+struct RenderFrameData
+{
+	Scene MainScene;
+	Camera MainCamera;
+	RenderMode Mode = RenderMode::E_Raster;
+};
 
 class Application
 {
@@ -14,10 +25,18 @@ public:
 	void Run();
 
 	void ShutDown();
+	
+	RenderFrameData BuildRenderFrameData() const;
+	bool SubmitRenderFrame(RenderFrameData FrameData);
+
+	void RenderThreadMain();
 
 private:
 	void ProcessMessages();
 	void Update(float DeltaTime);
+
+	void StartRenderThread();
+	void StopRenderThread();
 
 private:
 	bool bRunning = false;
@@ -25,7 +44,16 @@ private:
 	Scene MainScene;
 	Renderer Renderer;
 	Camera MainCamera;
+	RenderMode RequestedMode;
 
 	LARGE_INTEGER Frequency;
 	LARGE_INTEGER PreviousTime;
+
+	std::thread RenderThread;
+	std::mutex FrameQueueMutex;
+	std::condition_variable FrameAvailable;
+	std::queue<RenderFrameData> FrameQueue;
+
+	bool bStopRenderThread = false; // FrameQueueMutex·Î º¸È£
+	static constexpr size_t MaxQueuedFrames = 2;
 };

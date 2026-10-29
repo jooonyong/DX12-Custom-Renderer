@@ -1,6 +1,7 @@
 #include "Application.h"
 #include "GeometryGenerator.h"
 
+
 bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 {
 	if (!Wnd.Initialize(Instance, 1920, 1080, L"Custom Renderer"))
@@ -68,6 +69,8 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 
 void Application::Run()
 {
+	StartRenderThread();
+
 	while (bRunning)
 	{
 		LARGE_INTEGER CurrentTime;
@@ -82,8 +85,68 @@ void Application::Run()
 		//Scene, Camera 상태 업데이트
 		Update(DeltaTime);
 
+		RenderFrameData RenderThreadData = BuildRenderFrameData();
+		SubmitRenderFrame(RenderThreadData);
+		
 		//그리기 관련 RenderCommand
-		Renderer.RenderFrame(MainScene, MainCamera);
+		//Renderer.RenderFrame(RenderThreadData.MainScene, RenderThreadData.MainCamera);
+	}
+	StopRenderThread();
+	DestroyWindow(Wnd.GetHandle());
+}
+
+RenderFrameData Application::BuildRenderFrameData() const
+{
+	RenderFrameData RenderThreadData{};
+	RenderThreadData.MainCamera = this->MainCamera;
+	RenderThreadData.MainScene = this->MainScene;
+	RenderThreadData.Mode = this->RequestedMode;
+
+	return RenderThreadData;
+}
+
+bool Application::SubmitRenderFrame(RenderFrameData FrameData)
+{
+	{
+		std::unique_lock<std::mutex> Lock(FrameQueueMutex);
+
+		if (bStopRenderThread || FrameQueue.size() >= MaxQueuedFrames)
+		{
+			return false;
+		}
+
+		FrameQueue.push(std::move(FrameData));
+	} // Lock 소멸 → mutex 잠금 해제
+
+	FrameAvailable.notify_one();
+
+	return true;
+}
+
+void Application::RenderThreadMain()
+{
+	while (true)
+	{
+		RenderFrameData FrameData{};
+		{
+			std::unique_lock<std::mutex> Lock(FrameQueueMutex);
+
+			FrameAvailable.wait(Lock, [this]
+				{
+					return bStopRenderThread || !FrameQueue.empty();
+				});
+
+			if (bStopRenderThread)
+			{
+				return;
+			}
+			FrameData = std::move(FrameQueue.front());
+			FrameQueue.pop();
+		} // mutex 잠금 해제
+
+		// FrameData의 Scene과 Camera로 렌더링
+		Renderer.SetRenderMode(FrameData.Mode);
+		Renderer.RenderFrame(FrameData.MainScene, FrameData.MainCamera);
 	}
 }
 
@@ -91,6 +154,7 @@ void Application::ShutDown()
 {
 	return;
 }
+
 
 void Application::ProcessMessages()
 {
@@ -147,14 +211,84 @@ void Application::Update(float DeltaTime)
 
 	if (GetAsyncKeyState('1') & 0x8000)
 	{
-		Renderer.SetRenderMode(RenderMode::E_Raster);
+		RequestedMode = RenderMode::E_Raster;
 	}
 	if (GetAsyncKeyState('2') & 0x8000)
 	{
-		Renderer.SetRenderMode(RenderMode::E_Raytracing);
+		RequestedMode = RenderMode::E_Raytracing;
 	}
 	if (GetAsyncKeyState('3') & 0x8000)
 	{
-		Renderer.SetRenderMode(RenderMode::E_Hybrid);
+		RequestedMode = RenderMode::E_Hybrid;
 	}
+}
+
+void Application::StartRenderThread()
+{
+	//RenderThread.joinable()이면 바로 반환
+	if (RenderThread.joinable())
+	{
+		return;
+	}
+
+	{
+		std::lock_guard<std::mutex> Lock(FrameQueueMutex);
+
+		//종료 요청 플래그를 false로 설정
+		bStopRenderThread = false;
+	}
+	// 새 std::thread를 생성해서 RenderThread에 이동 대입
+	// 새 스레드는 이 Application의 RenderThreadMain() 실행
+	RenderThread = std::move(std::thread([this] {
+		RenderThreadMain();
+		})
+	);
+}
+
+void Application::StopRenderThread()
+{
+	if (!RenderThread.joinable())
+	{
+		return;
+	}
+
+	{
+		std::lock_guard<std::mutex> Lock(FrameQueueMutex);
+
+		// 종료 요청 플래그를 true로 설정
+		bStopRenderThread = true;
+	}
+
+	// FrameAvailable로 대기 중인 렌더 스레드를 깨우기
+	FrameAvailable.notify_one();
+
+	// Windows / MSVC용: 스레드 종료와 창 메시지를 함께 기다림
+	HANDLE ThreadHandle = RenderThread.native_handle();
+
+	while (true)
+	{
+		DWORD Result = MsgWaitForMultipleObjectsEx(
+			1,
+			&ThreadHandle,
+			INFINITE,
+			QS_ALLINPUT,
+			MWMO_INPUTAVAILABLE);
+
+		if (Result == WAIT_OBJECT_0)
+		{
+			break; // 렌더 스레드 실행 종료
+		}
+
+		if (Result == WAIT_OBJECT_0 + 1)
+		{
+			ProcessMessages();
+			continue;
+		}
+
+		OutputDebugStringA("Render thread exit wait failed.\n");
+		std::terminate();
+	}
+
+	// TODO: RenderThread.join() 호출
+	RenderThread.join();
 }
