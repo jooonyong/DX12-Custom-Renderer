@@ -48,6 +48,11 @@ void WindowsWindow::ConsumeMouseDelta(int& DeltaX, int& DeltaY)
 	MouseDeltaY = 0;
 }
 
+bool WindowsWindow::IsCloseRequested() const
+{
+	return bCloseRequest;
+}
+
 bool WindowsWindow::RegisterWindowClass()
 {
 	WNDCLASS WindowClass = { };
@@ -98,6 +103,11 @@ LRESULT WindowsWindow::HandleMessage(HWND Hwnd, UINT Message, WPARAM WParam, LPA
 			LastMouseY = MouseY;
 		}
 
+		return 0;
+	}
+	case WM_CLOSE:
+	{
+		bCloseRequest = true;
 		return 0;
 	}
 	case WM_DESTROY:

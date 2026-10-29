@@ -70,26 +70,35 @@ bool Application::Initialize(HINSTANCE Instance, int ShowCommand)
 void Application::Run()
 {
 	StartRenderThread();
+	
+	try{
+		while (bRunning)
+		{
+			LARGE_INTEGER CurrentTime;
+			QueryPerformanceCounter(&CurrentTime);
 
-	while (bRunning)
-	{
-		LARGE_INTEGER CurrentTime;
-		QueryPerformanceCounter(&CurrentTime);
+			float DeltaTime = static_cast<float>((CurrentTime.QuadPart - PreviousTime.QuadPart)) / static_cast<float>(Frequency.QuadPart);
+			PreviousTime = CurrentTime;
 
-		float DeltaTime = static_cast<float>((CurrentTime.QuadPart - PreviousTime.QuadPart)) / static_cast<float>(Frequency.QuadPart);
-		PreviousTime = CurrentTime;
+			//OS Event
+			ProcessMessages();
+			if (!bRunning)
+			{
+				break;
+			}
+			//Scene, Camera 상태 업데이트
+			Update(DeltaTime);
 
-		//OS Event
-		ProcessMessages();
+			RenderFrameData RenderThreadData = BuildRenderFrameData();
+			SubmitRenderFrame(std::move(RenderThreadData));
 
-		//Scene, Camera 상태 업데이트
-		Update(DeltaTime);
-
-		RenderFrameData RenderThreadData = BuildRenderFrameData();
-		SubmitRenderFrame(RenderThreadData);
-		
-		//그리기 관련 RenderCommand
-		//Renderer.RenderFrame(RenderThreadData.MainScene, RenderThreadData.MainCamera);
+			//그리기 관련 RenderCommand
+			//Renderer.RenderFrame(RenderThreadData.MainScene, RenderThreadData.MainCamera);
+		}
+	}
+	catch (const std::exception& Error) {
+		StopRenderThread();
+		throw;
 	}
 	StopRenderThread();
 	DestroyWindow(Wnd.GetHandle());
@@ -166,10 +175,14 @@ void Application::ProcessMessages()
 		{
 			bRunning = false;
 		}
+
 		TranslateMessage(&Message);
 		DispatchMessage(&Message);
 	}
-
+	if (Wnd.IsCloseRequested())
+	{
+		bRunning = false;
+	}
 }
 
 void Application::Update(float DeltaTime)

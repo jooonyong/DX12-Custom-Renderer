@@ -14,6 +14,7 @@ public:
 	static LRESULT CALLBACK WndProc(HWND Hwnd, UINT Message, WPARAM WParam, LPARAM LParam);
 
 	void ConsumeMouseDelta(int& DeltaX, int& DeltaY);
+	bool IsCloseRequested() const;
 private:
 	bool RegisterWindowClass();
 	LRESULT HandleMessage(HWND Hwnd, UINT Message, WPARAM WParam,LPARAM LParam);
@@ -33,4 +34,6 @@ private:
 
 	bool bRMouseDown = false;
 	const wchar_t* Title = L"DX12RendererWindow";
+
+	bool bCloseRequest = false;
 };

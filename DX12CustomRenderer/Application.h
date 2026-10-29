@@ -44,7 +44,7 @@ private:
 	Scene MainScene;
 	Renderer Renderer;
 	Camera MainCamera;
-	RenderMode RequestedMode;
+	RenderMode RequestedMode = RenderMode::E_Raster;
 
 	LARGE_INTEGER Frequency;
 	LARGE_INTEGER PreviousTime;
