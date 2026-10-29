@@ -14,6 +14,7 @@ struct RenderFrameData
 	Scene MainScene;
 	Camera MainCamera;
 	RenderMode Mode = RenderMode::E_Raster;
+	uint64_t FrameNumber = 0;
 };
 
 class Application
@@ -56,4 +57,6 @@ private:
 
 	bool bStopRenderThread = false; // FrameQueueMutex·Î º¸È£
 	static constexpr size_t MaxQueuedFrames = 2;
+
+	uint64_t NextFrameNumber = 0;
 };

@@ -92,6 +92,7 @@ void Application::Run()
 			RenderFrameData RenderThreadData = BuildRenderFrameData();
 			SubmitRenderFrame(std::move(RenderThreadData));
 
+			NextFrameNumber++;
 			//그리기 관련 RenderCommand
 			//Renderer.RenderFrame(RenderThreadData.MainScene, RenderThreadData.MainCamera);
 		}
@@ -110,6 +111,7 @@ RenderFrameData Application::BuildRenderFrameData() const
 	RenderThreadData.MainCamera = this->MainCamera;
 	RenderThreadData.MainScene = this->MainScene;
 	RenderThreadData.Mode = this->RequestedMode;
+	RenderThreadData.FrameNumber = NextFrameNumber;
 
 	return RenderThreadData;
 }
