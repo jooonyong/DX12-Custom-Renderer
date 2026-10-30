@@ -56,6 +56,20 @@ void D3D12CommandQueue::Execute(D3D12CommandContext* Command)
 	CommandQueue->ExecuteCommandLists(1, CommandLists);
 }
 
+void D3D12CommandQueue::Execute(ID3D12CommandList** CommandLists, UINT Count)
+{
+	if (Count == 0 || !CommandLists)
+	{
+		return;
+	}
+	for (UINT i = 0; i < Count; i++)
+	{
+		if (!CommandLists[i])
+			return;
+	}
+	CommandQueue->ExecuteCommandLists(Count, CommandLists);
+}
+
 ID3D12CommandQueue* D3D12CommandQueue::GetNativeCommandQueue() const
 {
 	return CommandQueue;

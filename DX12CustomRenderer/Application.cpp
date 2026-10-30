@@ -328,6 +328,6 @@ void Application::StopRenderThread()
 		std::terminate();
 	}
 
-	// TODO: RenderThread.join() 호출
+	// RenderThread.join() 호출
 	RenderThread.join();
 }

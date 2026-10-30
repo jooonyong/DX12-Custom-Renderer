@@ -12,6 +12,7 @@ public:
 	bool Initialize(D3D12Device* Device);
 
 	void Execute(D3D12CommandContext* Command);
+	void Execute(ID3D12CommandList** CommandLists, UINT Count);
 	ID3D12CommandQueue* GetNativeCommandQueue() const;
 
 	UINT64 Signal();

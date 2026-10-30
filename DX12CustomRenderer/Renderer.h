@@ -40,8 +40,17 @@ enum class RenderMode
 	E_Hybrid
 };
 
+struct PassCommandResources
+{
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> Allocator;
+	D3D12CommandContext Context;
+};
+
 struct FrameResource
 {
+	PassCommandResources GBufferPassCommand;
+	PassCommandResources ShadowPassCommand;
+
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator = nullptr;
 	UINT FenceValue = 0;
 
@@ -140,6 +149,8 @@ public:
 	void RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV);
 	
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
+
+	bool CreatePassCommandResources(PassCommandResources& Resources);
 
 	bool CreateMainRootSignature();
 	bool CreateMainPipelineState();

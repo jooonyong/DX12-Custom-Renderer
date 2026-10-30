@@ -68,6 +68,9 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 	for (int i = 0; i < BufferCount; i++)
 	{
+		CreatePassCommandResources(Frame[i].GBufferPassCommand);
+		CreatePassCommandResources(Frame[i].ShadowPassCommand);
+
 		if (FAILED(Device.GetDevice()->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&Frame[i].CommandAllocator))))
 		{
 			return false;
@@ -789,6 +792,21 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		return;
 	}
 	CurrentFrame.FenceValue = FenceValue;
+}
+
+bool Renderer::CreatePassCommandResources(PassCommandResources& Resources)
+{
+	HRESULT Result = Device.GetDevice()->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&Resources.Allocator));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+
+	if (!Resources.Context.Initialize(&Device, Resources.Allocator.Get()))
+	{
+		return false;
+	}
+	return true;
 }
 
 bool Renderer::CreateMainRootSignature()
