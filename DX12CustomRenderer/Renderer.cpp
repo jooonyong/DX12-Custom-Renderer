@@ -778,6 +778,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	);
 
 	Graph.Compile();
+
 	Graph.Execute([&](const RenderGraphPass& Pass)->ID3D12GraphicsCommandList* {
 		if (Pass.Name == "GBufferPass")
 		{
@@ -787,9 +788,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		{
 			return CurrentFrame.ShadowPassCommand.Context.GetCommandList();
 		}
+			return CommandContext.GetCommandList();
 		}, 
 		StateTracker);
-	Graph.Execute(CommandContext.GetCommandList(), StateTracker);
 
 	CommandContext.Close();
 	CurrentFrame.GBufferPassCommand.Context.Close();
