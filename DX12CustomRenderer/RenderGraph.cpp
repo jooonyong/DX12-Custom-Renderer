@@ -15,12 +15,22 @@ void RenderGraph::AddPass(std::string Name, std::vector<RenderGraphResourceUsage
 
 void RenderGraph::Execute(ID3D12GraphicsCommandList* CommandList, ResourceStateTracker& StateTracker)
 {
+	Execute([CommandList](const RenderGraphPass&) {
+			return CommandList;
+		}, StateTracker);
+}
+
+void RenderGraph::Execute(const std::function<ID3D12GraphicsCommandList* (const RenderGraphPass&)>& SelectCommandList, ResourceStateTracker& StateTracker)
+{
 	for (auto& Order : ExecutionOrder)
 	{
 		RenderGraphPass& Pass = Passes[Order];
-		for (const auto& Usage : Pass.ResourceUsages)
+
+		//이 패스에 사용할 CommandList
+		ID3D12GraphicsCommandList* CommandList = SelectCommandList(Pass);
+		for (auto& Usages : Pass.ResourceUsages)
 		{
-			StateTracker.Transition(CommandList, Usage.Resource, Usage.RequiredState);
+			StateTracker.Transition(CommandList, Usages.Resource, Usages.RequiredState);
 		}
 		Pass.Execute(CommandList);
 	}

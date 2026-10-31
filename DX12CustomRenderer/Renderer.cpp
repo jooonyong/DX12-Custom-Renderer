@@ -68,8 +68,14 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 	for (int i = 0; i < BufferCount; i++)
 	{
-		CreatePassCommandResources(Frame[i].GBufferPassCommand);
-		CreatePassCommandResources(Frame[i].ShadowPassCommand);
+		if (!CreatePassCommandResources(Frame[i].GBufferPassCommand))
+		{
+			return false;
+		}
+		if (!CreatePassCommandResources(Frame[i].ShadowPassCommand))
+		{
+			return false;
+		}
 
 		if (FAILED(Device.GetDevice()->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&Frame[i].CommandAllocator))))
 		{
@@ -544,7 +550,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	{
 		return;
 	}
+	
+	auto& GBufferPassCommand = CurrentFrame.GBufferPassCommand;
+	auto& ShadowPassCommand = CurrentFrame.ShadowPassCommand;
 
+	GBufferPassCommand.Context.Reset(GBufferPassCommand.Allocator.Get());
+	ShadowPassCommand.Context.Reset(ShadowPassCommand.Allocator.Get());
 	CommandContext.Reset(CurrentFrame.CommandAllocator.Get());
 
 	std::vector<DrawCommand> DrawCommands;
@@ -767,11 +778,31 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	);
 
 	Graph.Compile();
-
+	Graph.Execute([&](const RenderGraphPass& Pass)->ID3D12GraphicsCommandList* {
+		if (Pass.Name == "GBufferPass")
+		{
+			return CurrentFrame.GBufferPassCommand.Context.GetCommandList();	
+		}
+		else if (Pass.Name == "ShadowPass")
+		{
+			return CurrentFrame.ShadowPassCommand.Context.GetCommandList();
+		}
+		}, 
+		StateTracker);
 	Graph.Execute(CommandContext.GetCommandList(), StateTracker);
 
 	CommandContext.Close();
-	CommandQueue.Execute(&CommandContext);
+	CurrentFrame.GBufferPassCommand.Context.Close();
+	CurrentFrame.ShadowPassCommand.Context.Close();
+
+	ID3D12CommandList* Lists[] =
+	{
+		GBufferPassCommand.Context.GetCommandList(),
+		ShadowPassCommand.Context.GetCommandList(),
+		CommandContext.GetCommandList()
+	};
+	CommandQueue.Execute(Lists, _countof(Lists));
+
 	if (CurrentRenderMode == RenderMode::E_Hybrid)
 	{
 		if (ReflectionHistoryFrameCount < 64)
