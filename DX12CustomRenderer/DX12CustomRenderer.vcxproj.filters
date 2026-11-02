@@ -96,6 +96,9 @@
     <ClCompile Include="AccelerationStructure.cpp">
       <Filter>Source\RHI\D3D12</Filter>
     </ClCompile>
+    <ClCompile Include="RenderRecordingWorker.cpp">
+      <Filter>Source\Renderer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">
@@ -171,6 +174,9 @@
     </ClInclude>
     <ClInclude Include="Scene.h">
       <Filter>Source\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderRecordingWorker.h">
+      <Filter>Source\Renderer</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
