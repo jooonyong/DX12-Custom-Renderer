@@ -14,6 +14,8 @@ void RenderRecordingWorker::Start()
     {
         std::lock_guard<std::mutex> Lock(JobMutex);
         bStop = false;
+        bBusy = false;
+        JobException = nullptr;
     }
 
     WorkerThread = std::move(std::thread([this] {
@@ -25,6 +27,7 @@ void RenderRecordingWorker::Start()
 
 void RenderRecordingWorker::Wait()
 {
+    std::exception_ptr Error = nullptr;
     {
         std::unique_lock<std::mutex> Lock(JobMutex);
         JobFinished.wait(Lock, [this]
@@ -32,6 +35,12 @@ void RenderRecordingWorker::Wait()
                 //접수된 작업의 실행까지 모두 끝났는지 반환
                 return !bBusy;
             });
+
+        Error = JobException;
+    }
+    if (Error)
+    {
+        std::rethrow_exception(Error);
     }
 }
 
@@ -59,6 +68,7 @@ bool RenderRecordingWorker::Submit(std::function<void()> Job)
 		}
 		PendingJob = std::move(Job);
 		bBusy = true;
+        JobException = nullptr;
 	}
 	JobAvailable.notify_one();
 	return true;
@@ -88,10 +98,18 @@ void RenderRecordingWorker::ThreadMain()
         }
 
         //Job 실행
-        Job();
+        std::exception_ptr Error = nullptr;
+        try {
+            Job();
+        }
+        catch (...) {
+            Error = std::current_exception();
+        }
+
         Job = nullptr;
         {
             std::lock_guard<std::mutex> Lock(JobMutex);
+            JobException = Error;
             bBusy = false;
         }
 

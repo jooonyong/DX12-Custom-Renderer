@@ -3,6 +3,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <functional>
+#include <exception>
 
 class RenderRecordingWorker
 {
@@ -23,6 +24,7 @@ private:
 	std::condition_variable JobAvailable;
 	std::condition_variable JobFinished;
 	std::function<void()> PendingJob;
+	std::exception_ptr JobException;
 
 	bool bStop = false;
 	bool bBusy = false;
