@@ -75,6 +75,15 @@ void Application::Run()
 		QueryPerformanceCounter(&PreviousTime);
 		while (bRunning)
 		{
+			{
+				std::lock_guard<std::mutex> Lock(FrameQueueMutex);
+				if (bStopRenderThread)
+				{
+					bRunning = false;
+					break;
+				}
+			}
+
 			LARGE_INTEGER CurrentTime;
 			QueryPerformanceCounter(&CurrentTime);
 			float DeltaTime = static_cast<float>((CurrentTime.QuadPart - PreviousTime.QuadPart)) / static_cast<float>(Frequency.QuadPart);
@@ -141,28 +150,43 @@ bool Application::SubmitRenderFrame(RenderFrameData FrameData)
 
 void Application::RenderThreadMain()
 {
-	while (true)
-	{
-		RenderFrameData FrameData{};
+	try {
+		while (true)
 		{
-			std::unique_lock<std::mutex> Lock(FrameQueueMutex);
-
-			FrameAvailable.wait(Lock, [this]
-				{
-					return bStopRenderThread || !FrameQueue.empty();
-				});
-
-			if (bStopRenderThread)
+			RenderFrameData FrameData{};
 			{
-				return;
-			}
-			FrameData = std::move(FrameQueue.front());
-			FrameQueue.pop();
-		} // mutex 잠금 해제
+				std::unique_lock<std::mutex> Lock(FrameQueueMutex);
 
-		// FrameData의 Scene과 Camera로 렌더링
-		Renderer.SetRenderMode(FrameData.Mode);
-		Renderer.RenderFrame(FrameData.MainScene, FrameData.MainCamera);
+				FrameAvailable.wait(Lock, [this]
+					{
+						return bStopRenderThread || !FrameQueue.empty();
+					});
+
+				if (bStopRenderThread)
+				{
+					return;
+				}
+				FrameData = std::move(FrameQueue.front());
+				FrameQueue.pop();
+			} // mutex 잠금 해제
+
+			// FrameData의 Scene과 Camera로 렌더링
+			Renderer.SetRenderMode(FrameData.Mode);
+			Renderer.RenderFrame(FrameData.MainScene, FrameData.MainCamera);
+		}
+	}
+	catch (const std::exception& Error)
+	{
+		OutputDebugStringA("Render thread error: ");
+		OutputDebugStringA(Error.what());
+		OutputDebugStringA("\n");
+	}
+	catch (...){
+		OutputDebugStringA("Unknown render thread error.\n");
+	}
+	{
+		std::unique_lock<std::mutex> Lock(FrameQueueMutex);
+		bStopRenderThread = true;
 	}
 }
 

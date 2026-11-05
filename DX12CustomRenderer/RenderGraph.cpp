@@ -22,6 +22,18 @@ void RenderGraph::Execute(ID3D12GraphicsCommandList* CommandList, ResourceStateT
 
 void RenderGraph::Execute(const std::function<ID3D12GraphicsCommandList* (const RenderGraphPass&)>& SelectCommandList, ResourceStateTracker& StateTracker)
 {
+	Execute(
+		SelectCommandList,
+		[](const RenderGraphPass& Pass,
+			ID3D12GraphicsCommandList* CommandList)
+		{
+			Pass.Execute(CommandList);
+		},
+		StateTracker);
+}
+
+void RenderGraph::Execute(const std::function<ID3D12GraphicsCommandList* (const RenderGraphPass&)>& SelectCommandList, const std::function<void(const RenderGraphPass&, ID3D12GraphicsCommandList*)>& RecordPass, ResourceStateTracker& StateTracker)
+{
 	for (auto& Order : ExecutionOrder)
 	{
 		RenderGraphPass& Pass = Passes[Order];
@@ -32,7 +44,7 @@ void RenderGraph::Execute(const std::function<ID3D12GraphicsCommandList* (const 
 		{
 			StateTracker.Transition(CommandList, Usages.Resource, Usages.RequiredState);
 		}
-		Pass.Execute(CommandList);
+		RecordPass(Pass, CommandList);
 	}
 }
 

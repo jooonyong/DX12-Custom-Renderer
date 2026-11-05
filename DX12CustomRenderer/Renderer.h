@@ -15,6 +15,7 @@
 #include "DrawCommand.h"
 #include "D3D12ResourceStateTracker.h"
 #include "RenderGraph.h"
+#include "RenderRecordingWorker.h"
 #include "dxgi1_6.h"
 #include "dxcapi.h"
 #include "DirectXMath.h"
@@ -214,6 +215,7 @@ public:
 
 	bool CreateLocalRootSignature();
 
+	bool StartRecordingWorkers();
 private:
 	RenderMode CurrentRenderMode = RenderMode::E_Raster;
 	std::atomic<uint64_t> PresentedFrameCount{ 0 };
@@ -355,4 +357,7 @@ private:
 
 	DirectX::XMFLOAT4X4 PreviousReflectionViewProjection{};
 	bool bPrevReflectionViewProjection = false;
+
+	RenderRecordingWorker GBufferWorker;
+	RenderRecordingWorker ShadowWorker;
 };

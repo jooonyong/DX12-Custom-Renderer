@@ -35,7 +35,9 @@ public:
     void AddPass(std::string Name, std::vector<RenderGraphResourceUsage> Resources, std::function<void(ID3D12GraphicsCommandList*)> Execute);
     void Execute(ID3D12GraphicsCommandList* CommandList, ResourceStateTracker& StateTracker);
 	void Execute(const std::function<ID3D12GraphicsCommandList* (const RenderGraphPass&)>& SelectCommandList, ResourceStateTracker& StateTracker);
-	
+	void Execute(const std::function<ID3D12GraphicsCommandList* (const RenderGraphPass&)>& SelectCommandList,
+		const std::function<void (const RenderGraphPass&, ID3D12GraphicsCommandList*)>& RecordPass,
+		ResourceStateTracker& StateTracker);
 	void Compile();
 	void BuildDependency();
 	void BuildExecutionOrder();

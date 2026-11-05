@@ -8,6 +8,9 @@
 Renderer::Renderer() = default;
 Renderer::~Renderer()
 {
+	GBufferWorker.Stop();
+	ShadowWorker.Stop();
+
 	if (CommandQueue.GetNativeCommandQueue())
 	{
 		CommandQueue.WaitForIdle();
@@ -109,6 +112,11 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 		return false;
 	}
 	if (!SRVDescriptorAllocator.Initialize(&Device, 256))
+	{
+		return false;
+	}
+
+	if(!StartRecordingWorkers())
 	{
 		return false;
 	}
@@ -779,18 +787,91 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	Graph.Compile();
 
-	Graph.Execute([&](const RenderGraphPass& Pass)->ID3D12GraphicsCommandList* {
-		if (Pass.Name == "GBufferPass")
-		{
-			return CurrentFrame.GBufferPassCommand.Context.GetCommandList();	
-		}
-		else if (Pass.Name == "ShadowPass")
-		{
-			return CurrentFrame.ShadowPassCommand.Context.GetCommandList();
-		}
+	bool bGBufferSubmitted = false;
+	bool bShadowSubmitted = false;
+	std::exception_ptr RecordingError = nullptr;
+
+	try {
+		Graph.Execute([&](const RenderGraphPass& Pass)->ID3D12GraphicsCommandList* {
+			if (Pass.Name == "GBufferPass")
+			{
+				return CurrentFrame.GBufferPassCommand.Context.GetCommandList();
+			}
+			else if (Pass.Name == "ShadowPass")
+			{
+				return CurrentFrame.ShadowPassCommand.Context.GetCommandList();
+			}
 			return CommandContext.GetCommandList();
-		}, 
-		StateTracker);
+			},
+			[&](const RenderGraphPass& Pass,
+				ID3D12GraphicsCommandList* CommandList)
+			{
+				auto Job = [Execute = Pass.Execute, CommandList]()
+					{
+						Execute(CommandList);
+					};
+				// GBufferPass → GBufferWorker.Submit()
+				// ShadowPass  → ShadowWorker.Submit()
+				// 나머지      → 이 자리에서 Pass.Execute(CommandList)
+				if (Pass.Name == "GBufferPass")
+				{
+					if (!GBufferWorker.Submit(std::move(Job)))
+					{
+						throw std::runtime_error("Failed to submit GBuffer recording job.");
+					}
+					bGBufferSubmitted = true;
+					return;
+				}
+				else if (Pass.Name == "ShadowPass")
+				{
+					if (!ShadowWorker.Submit(std::move(Job)))
+					{
+						throw std::runtime_error("Failed to submit ShadowBuffer recording job.");
+					}
+					bShadowSubmitted = true;
+					return;
+				}
+				else {
+					Pass.Execute(CommandList);
+				}
+			},
+			StateTracker);
+	}
+	catch (...) {
+		RecordingError = std::current_exception();
+	}
+
+	if (bGBufferSubmitted)
+	{
+		try {
+			GBufferWorker.Wait();
+		}
+		catch (...) {
+			if (!RecordingError)
+			{
+				RecordingError = std::current_exception();
+			}
+		}
+	}
+	
+	if (bShadowSubmitted)
+	{
+		try {
+			ShadowWorker.Wait();
+		}
+		catch (...) {
+			if (!RecordingError)
+			{
+				RecordingError = std::current_exception();
+			}
+		}
+	}
+	
+	// 제출한 Worker 작업을 모두 기다린 뒤 오류 전달
+	if (RecordingError)
+	{
+		std::rethrow_exception(RecordingError);
+	}
 
 	CommandContext.Close();
 	CurrentFrame.GBufferPassCommand.Context.Close();
@@ -3199,4 +3280,20 @@ bool Renderer::CreateLocalRootSignature()
 		return false;
 	}
 	return true;
+}
+
+bool Renderer::StartRecordingWorkers()
+{
+	try {
+		GBufferWorker.Start();
+		ShadowWorker.Start();
+
+		return true;
+	}
+	catch (...) {
+		GBufferWorker.Stop();
+		ShadowWorker.Stop();
+
+		return false;
+	}
 }
