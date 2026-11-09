@@ -363,10 +363,13 @@ private:
 	RenderRecordingWorker GBufferWorker;
 	RenderRecordingWorker ShadowWorker;
 
+	bool bRecording = false;
 	std::ofstream RecordingTimingLog;
 
 	LARGE_INTEGER RecordingTimerFrequency{};
 
 	double RecordingTimeSumMs = 0.0;
 	uint32_t RecordingTimeSampleCount = 0;
+
+	std::vector<double> RecordingTimeSamples;
 };
