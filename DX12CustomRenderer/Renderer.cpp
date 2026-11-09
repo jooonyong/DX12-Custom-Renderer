@@ -6,6 +6,7 @@
 #include "AccelerationStructure.h"
 #include <algorithm>
 #include <filesystem>
+#include <numeric>
 
 Renderer::Renderer() = default;
 Renderer::~Renderer()
@@ -71,9 +72,12 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 	if (std::filesystem::file_size("RecordingTimingLog.csv") == 0)
 	{
-		RecordingTimingLog << "Mode,AverageMs,MinMs,MaxMs,MedianMs\n";
+		RecordingTimingLog << "Mode,AverageMs,MinMs,MaxMs,MedianMs,GBufferPass,ShadowPass\n";
 	}
+	
 	RecordingTimeSamples.resize(600);
+	GBufferTimeSamples.resize(600);
+	ShadowTimeSamples.resize(600);	
 
 	if (!Device.Initialize())
 	{
@@ -275,6 +279,11 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 void Renderer::RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::vector<DrawCommand>& DrawCommands, FrameResource& Frame, UINT FrameIndex)
 {
+	LARGE_INTEGER PassStart{};
+	LARGE_INTEGER PassEnd{};
+
+	QueryPerformanceCounter(&PassStart);
+
 	CommandList->SetPipelineState(GBufferPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(GBufferRootSignature.Get());
 
@@ -317,10 +326,19 @@ void Renderer::RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::ve
 
 		CommandList->DrawIndexedInstanced(Command.IndexCount, 1, Command.IndexStart, 0, 0);
 	}
+
+	QueryPerformanceCounter(&PassEnd);
+
+	GBufferRecordingTime = static_cast<double>(PassEnd.QuadPart - PassStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
 }
 
 void Renderer::RenderShadowPass(ID3D12GraphicsCommandList* CommandList,std::vector<DrawCommand>& DrawCommands, FrameResource& Frame)
 {
+	LARGE_INTEGER PassStart{};
+	LARGE_INTEGER PassEnd{};
+
+	QueryPerformanceCounter(&PassStart);
+
 	CommandList->SetPipelineState(ShadowPipelineState.Get());
 	CommandList->SetGraphicsRootSignature(ShadowRootSignature.Get());
 
@@ -346,6 +364,9 @@ void Renderer::RenderShadowPass(ID3D12GraphicsCommandList* CommandList,std::vect
 		CommandList->SetGraphicsRootConstantBufferView(0, Frame.ObjectConstantBuffer->GetGPUVirtualAddress() + Stride);
 		CommandList->DrawIndexedInstanced(Command.IndexCount, 1, Command.IndexStart, 0, 0);
 	}
+
+	QueryPerformanceCounter(&PassEnd);
+	ShadowRecordingTime = static_cast<double>(PassEnd.QuadPart - PassStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
 }
 
 void Renderer::RenderDeferredLightingPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle* ReflectionInputSRV)
@@ -830,7 +851,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 					Pass.Execute(CommandList);
 					return;
 				}
-				auto Job = [Execute = Pass.Execute, CommandList]()
+				auto Job = [this, Execute = Pass.Execute, CommandList]()
 					{
 						Execute(CommandList);
 					};
@@ -865,10 +886,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		RecordingError = std::current_exception();
 	}
 
+	double GBufferTime = 0.0;
 	if (bGBufferSubmitted)
 	{
 		try {
 			GBufferWorker.Wait();
+			GBufferTime = this->GBufferRecordingTime;
 		}
 		catch (...) {
 			if (!RecordingError)
@@ -877,11 +900,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			}
 		}
 	}
-	
+	double ShadowTime = 0.0;
 	if (bShadowSubmitted)
 	{
 		try {
 			ShadowWorker.Wait();
+			ShadowTime = this->ShadowRecordingTime;
 		}
 		catch (...) {
 			if (!RecordingError)
@@ -908,24 +932,31 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	if ( RecordingTimeSampleCount > 120  && RecordingTimeSampleCount <= 720)
 	{
 		RecordingTimeSamples[RecordingTimeSampleCount - 121] = RecordingMS;
+		GBufferTimeSamples[RecordingTimeSampleCount - 121] = GBufferTime;
+		ShadowTimeSamples[RecordingTimeSampleCount - 121] = ShadowTime;
+
 		RecordingTimeSumMs += RecordingMS;
 		bRecording = true;
 	}
-	else if (RecordingTimeSampleCount >= 720 && bRecording)
+	if (RecordingTimeSampleCount >= 720 && bRecording)
 	{
 		double AverageRecordingTime = RecordingTimeSumMs / static_cast<double>(RecordingTimeSampleCount - 120.0);
+		double AverageGBufferTime = std::accumulate(GBufferTimeSamples.begin(), GBufferTimeSamples.end(), 0.0) / static_cast<double>(GBufferTimeSamples.size());
+		double AverageShadowTime = std::accumulate(ShadowTimeSamples.begin(), ShadowTimeSamples.end(), 0.0) / static_cast<double>(ShadowTimeSamples.size());
 		
 		sort(RecordingTimeSamples.begin(), RecordingTimeSamples.end());
 		double MinRecordingTime = RecordingTimeSamples.front();
 		double MaxRecordingTime = RecordingTimeSamples.back();
-		double MedianRecordingTime = (RecordingTimeSamples[RecordingTimeSamples.size() / 2] + RecordingTimeSamples[(RecordingTimeSamples.size() + 1) / 2]) / 2.0;
+		double MedianRecordingTime = (RecordingTimeSamples[RecordingTimeSamples.size() / 2] + RecordingTimeSamples[RecordingTimeSamples.size() / 2 + 1]) / 2.0;
 		
 		RecordingTimingLog 
 			<< (bParallelRecording ? "Parallel" : "Sequential") << ','
 			<< AverageRecordingTime << ','
 			<< MinRecordingTime << ','
 			<< MaxRecordingTime << ','
-			<< MedianRecordingTime << '\n';
+			<< MedianRecordingTime << ','
+			<< AverageGBufferTime << ','
+			<< AverageShadowTime << '\n';
 
 		bRecording = false;
 	}

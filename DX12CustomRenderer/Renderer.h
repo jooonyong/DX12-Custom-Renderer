@@ -372,4 +372,9 @@ private:
 	uint32_t RecordingTimeSampleCount = 0;
 
 	std::vector<double> RecordingTimeSamples;
+
+	double GBufferRecordingTime = 0.0;
+	double ShadowRecordingTime = 0.0;
+	std::vector<double> GBufferTimeSamples;
+	std::vector<double> ShadowTimeSamples;
 };
