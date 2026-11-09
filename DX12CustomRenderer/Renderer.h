@@ -22,6 +22,8 @@
 #include <vector>
 #include <memory>
 #include <atomic>
+#include <fstream>
+
 //#include <wincodec.h>
 //#include <wrl.h>
 //
@@ -360,4 +362,11 @@ private:
 
 	RenderRecordingWorker GBufferWorker;
 	RenderRecordingWorker ShadowWorker;
+
+	std::ofstream RecordingTimingLog;
+
+	LARGE_INTEGER RecordingTimerFrequency{};
+
+	double RecordingTimeSumMs = 0.0;
+	uint32_t RecordingTimeSampleCount = 0;
 };

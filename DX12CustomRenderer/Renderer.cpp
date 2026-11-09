@@ -61,6 +61,12 @@ Renderer::~Renderer()
 
 bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 {
+	QueryPerformanceFrequency(&RecordingTimerFrequency);
+	RecordingTimingLog.open("RecordingTimingLog.csv");
+	if (!RecordingTimingLog.is_open())
+	{
+		return false;
+	}
 	if (!Device.Initialize())
 	{
 		return false;
@@ -790,7 +796,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	bool bGBufferSubmitted = false;
 	bool bShadowSubmitted = false;
 	std::exception_ptr RecordingError = nullptr;
+	constexpr bool bParallelRecording = true;
 
+	LARGE_INTEGER RecordingStart{};
+	LARGE_INTEGER RecordingEnd{};
+
+	QueryPerformanceCounter(&RecordingStart);
 	try {
 		Graph.Execute([&](const RenderGraphPass& Pass)->ID3D12GraphicsCommandList* {
 			if (Pass.Name == "GBufferPass")
@@ -806,6 +817,11 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			[&](const RenderGraphPass& Pass,
 				ID3D12GraphicsCommandList* CommandList)
 			{
+				if(!bParallelRecording)
+				{
+					Pass.Execute(CommandList);
+					return;
+				}
 				auto Job = [Execute = Pass.Execute, CommandList]()
 					{
 						Execute(CommandList);
@@ -877,6 +893,19 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	CurrentFrame.GBufferPassCommand.Context.Close();
 	CurrentFrame.ShadowPassCommand.Context.Close();
 
+	QueryPerformanceCounter(&RecordingEnd);
+	
+	double RecordingMS = static_cast<double>(RecordingEnd.QuadPart - RecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
+	RecordingTimeSumMs += RecordingMS;
+	RecordingTimeSampleCount++;
+
+	if (RecordingTimeSampleCount >= 120)
+	{
+		double AverageRecordingTime = RecordingTimeSumMs / static_cast<double>(RecordingTimeSampleCount);
+		RecordingTimingLog << (bParallelRecording ? "Parallel" : "Sequential")<< ',' << AverageRecordingTime << '\n';
+		RecordingTimeSumMs = 0.0;
+		RecordingTimeSampleCount = 0;
+	}
 	ID3D12CommandList* Lists[] =
 	{
 		GBufferPassCommand.Context.GetCommandList(),
