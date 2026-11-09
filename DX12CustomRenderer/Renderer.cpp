@@ -5,6 +5,7 @@
 #include "GeometryGenerator.h"
 #include "AccelerationStructure.h"
 #include <algorithm>
+#include <filesystem>
 
 Renderer::Renderer() = default;
 Renderer::~Renderer()
@@ -63,10 +64,14 @@ Renderer::~Renderer()
 bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 {
 	QueryPerformanceFrequency(&RecordingTimerFrequency);
-	RecordingTimingLog.open("RecordingTimingLog.txt", std::ios::app);
+	RecordingTimingLog.open("RecordingTimingLog.csv", std::ios::app);
 	if (!RecordingTimingLog.is_open())
 	{
 		return false;
+	}
+	if (std::filesystem::file_size("RecordingTimingLog.csv") == 0)
+	{
+		RecordingTimingLog << "Mode,AverageMs,MinMs,MaxMs,MedianMs\n";
 	}
 	RecordingTimeSamples.resize(600);
 
@@ -906,20 +911,22 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		RecordingTimeSumMs += RecordingMS;
 		bRecording = true;
 	}
-	else if (RecordingTimeSampleCount > 720 && bRecording)
+	else if (RecordingTimeSampleCount >= 720 && bRecording)
 	{
 		double AverageRecordingTime = RecordingTimeSumMs / static_cast<double>(RecordingTimeSampleCount - 120.0);
 		
 		sort(RecordingTimeSamples.begin(), RecordingTimeSamples.end());
 		double MinRecordingTime = RecordingTimeSamples.front();
 		double MaxRecordingTime = RecordingTimeSamples.back();
-		double MedianRecordingTime = RecordingTimeSamples[RecordingTimeSamples.size() / 2];
-
-		RecordingTimingLog << (bParallelRecording ? "Parallel" : "Sequential") << " Average Time : " << AverageRecordingTime << '\n';
-		RecordingTimingLog << (bParallelRecording ? "Parallel" : "Sequential") << " MinTime : " << MinRecordingTime << '\n';
-		RecordingTimingLog << (bParallelRecording ? "Parallel" : "Sequential") << " MaxTime : " << MaxRecordingTime << '\n';
-		RecordingTimingLog << (bParallelRecording ? "Parallel" : "Sequential") << " Median Time : " << MedianRecordingTime << '\n';
+		double MedianRecordingTime = (RecordingTimeSamples[RecordingTimeSamples.size() / 2] + RecordingTimeSamples[(RecordingTimeSamples.size() + 1) / 2]) / 2.0;
 		
+		RecordingTimingLog 
+			<< (bParallelRecording ? "Parallel" : "Sequential") << ','
+			<< AverageRecordingTime << ','
+			<< MinRecordingTime << ','
+			<< MaxRecordingTime << ','
+			<< MedianRecordingTime << '\n';
+
 		bRecording = false;
 	}
 	ID3D12CommandList* Lists[] =
