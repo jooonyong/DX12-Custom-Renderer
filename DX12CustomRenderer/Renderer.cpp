@@ -88,8 +88,33 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+
+	if (!InitializeGpuTimestampResources())
+	{
+		return false;
+	}
 	for (int i = 0; i < BufferCount; i++)
 	{
+		//GPU Timestamp Readback버퍼용 ReadbackHeap 생성
+		D3D12_HEAP_PROPERTIES HeapProp = {};
+		HeapProp.Type = D3D12_HEAP_TYPE_READBACK;
+		HeapProp.VisibleNodeMask = 1;
+
+		D3D12_RESOURCE_DESC ResourceDesc = {};
+		ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		ResourceDesc.Width = sizeof(UINT64) * 2;
+		ResourceDesc.Height = 1;
+		ResourceDesc.DepthOrArraySize = 1;
+		ResourceDesc.MipLevels = 1;
+		ResourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+		ResourceDesc.SampleDesc = { 1, 0 };
+		ResourceDesc.Alignment = 0;
+		ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		ResourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+		Device.GetDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &ResourceDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+			IID_PPV_ARGS(&Frame[i].GPUTimeStampBuffer));
+
 		if (!CreatePassCommandResources(Frame[i].GBufferPassCommand))
 		{
 			return false;
@@ -589,6 +614,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	{
 		CommandQueue.WaitForFence(CurrentFrame.FenceValue);
 	}
+
 	auto& Objects = MainScene.GetRenderObjects();
 	if (Objects.size() > MaxRenderObjects)
 	{
@@ -3412,4 +3438,25 @@ bool Renderer::StartRecordingWorkers()
 
 		return false;
 	}
+}
+
+bool Renderer::InitializeGpuTimestampResources()
+{
+	D3D12_QUERY_HEAP_DESC QueryHeapDesc = {};
+	QueryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+	QueryHeapDesc.Count = 2 * BufferCount;
+	QueryHeapDesc.NodeMask = 0;
+
+	HRESULT Result = Device.GetDevice()->CreateQueryHeap(&QueryHeapDesc, IID_PPV_ARGS(&GPUTimeStampQueryHeap));
+	if (FAILED(Result))
+	{
+		return false;
+	}
+	Result = CommandQueue.GetNativeCommandQueue()->GetTimestampFrequency(&GPUTimeFrequency);
+	if (FAILED(Result))
+	{
+		return false;
+	}	
+
+	return true;
 }

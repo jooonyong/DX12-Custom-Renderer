@@ -74,6 +74,8 @@ struct FrameResource
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ReflectionAccumulationConstantBuffer;
 	void* ReflectionAccumulationMappedData = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> GPUTimeStampBuffer;
 };
 
 struct ObjectConstant
@@ -218,6 +220,8 @@ public:
 	bool CreateLocalRootSignature();
 
 	bool StartRecordingWorkers();
+
+	bool InitializeGpuTimestampResources();
 private:
 	RenderMode CurrentRenderMode = RenderMode::E_Raster;
 	std::atomic<uint64_t> PresentedFrameCount{ 0 };
@@ -381,4 +385,7 @@ private:
 	std::vector<double> GBufferTimeSamples;
 	std::vector<double> ShadowTimeSamples;
 	std::vector<double> MainTimeSamples;
+
+	Microsoft::WRL::ComPtr<ID3D12QueryHeap> GPUTimeStampQueryHeap;
+	uint64_t GPUTimeFrequency = 0.0;
 };
