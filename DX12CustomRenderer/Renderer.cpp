@@ -826,7 +826,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	bool bGBufferSubmitted = false;
 	bool bShadowSubmitted = false;
 	std::exception_ptr RecordingError = nullptr;
-	constexpr bool bParallelRecording = true;
+	constexpr bool bParallelRecording = false;
 
 	LARGE_INTEGER RecordingStart{};
 	LARGE_INTEGER RecordingEnd{};
