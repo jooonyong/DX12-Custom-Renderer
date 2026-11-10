@@ -706,6 +706,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		}
 		
 	}
+	UINT StartIndex = CurrentIndex * 2;
+	UINT EndIndex = StartIndex + 1;
+
 	if (CurrentRenderMode == RenderMode::E_Raster)
 	{
 		Graph.AddPass("GBufferPass",
@@ -717,7 +720,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			},
 			[&](ID3D12GraphicsCommandList* CommandList)
 			{
+				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex);
 				Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
+				CommandList->ResolveQueryData(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex, 2, CurrentFrame.GPUTimeStampBuffer.Get(), 0);
 			}
 		);
 		Graph.AddPass("ShadowPass",
