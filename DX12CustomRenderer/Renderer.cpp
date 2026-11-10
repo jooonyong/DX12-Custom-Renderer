@@ -833,6 +833,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	double GBufferTime = 0.0;
 	double ShadowTime = 0.0;
+	MainRecordingTime = 0.0;
 
 	QueryPerformanceCounter(&RecordingStart);
 	try {
@@ -854,13 +855,18 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{
 					LARGE_INTEGER MainRecordingStart{};
 					LARGE_INTEGER MainRecordingEnd{};
+					
 					QueryPerformanceCounter(&MainRecordingStart);
 					Pass.Execute(CommandList);
 					QueryPerformanceCounter(&MainRecordingEnd);
+
 					GBufferTime = this->GBufferRecordingTime;
 					ShadowTime = this->ShadowRecordingTime;	
-					MainRecordingTime += static_cast<double>(MainRecordingEnd.QuadPart - MainRecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
-
+					if(Pass.Name != "GBufferPass" && Pass.Name != "ShadowPass")
+					{
+						MainRecordingTime += static_cast<double>(MainRecordingEnd.QuadPart - MainRecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
+					}
+					
 					return;
 				}
 				auto Job = [this, Execute = Pass.Execute, CommandList]()
