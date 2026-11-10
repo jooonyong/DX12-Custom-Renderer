@@ -369,12 +369,16 @@ private:
 	LARGE_INTEGER RecordingTimerFrequency{};
 
 	double RecordingTimeSumMs = 0.0;
+	double WaitingTimeSumMs = 0.0;
 	uint32_t RecordingTimeSampleCount = 0;
 
 	std::vector<double> RecordingTimeSamples;
 
 	double GBufferRecordingTime = 0.0;
 	double ShadowRecordingTime = 0.0;
+	double MainRecordingTime = 0.0;
+
 	std::vector<double> GBufferTimeSamples;
 	std::vector<double> ShadowTimeSamples;
+	std::vector<double> MainTimeSamples;
 };

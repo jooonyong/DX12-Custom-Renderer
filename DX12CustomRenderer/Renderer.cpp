@@ -72,12 +72,13 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	}
 	if (std::filesystem::file_size("RecordingTimingLog.csv") == 0)
 	{
-		RecordingTimingLog << "Mode,AverageMs,MinMs,MaxMs,MedianMs,GBufferPass,ShadowPass\n";
+		RecordingTimingLog << "Mode,AverageMs,MinMs,MaxMs,MedianMs,GBufferPass,ShadowPass,MainRecordingTime,WorkerWait\n";
 	}
 	
 	RecordingTimeSamples.resize(600);
 	GBufferTimeSamples.resize(600);
 	ShadowTimeSamples.resize(600);	
+	MainTimeSamples.resize(600);
 
 	if (!Device.Initialize())
 	{
@@ -830,6 +831,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	LARGE_INTEGER RecordingStart{};
 	LARGE_INTEGER RecordingEnd{};
 
+	double GBufferTime = 0.0;
+	double ShadowTime = 0.0;
+
 	QueryPerformanceCounter(&RecordingStart);
 	try {
 		Graph.Execute([&](const RenderGraphPass& Pass)->ID3D12GraphicsCommandList* {
@@ -849,6 +853,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				if(!bParallelRecording)
 				{
 					Pass.Execute(CommandList);
+					GBufferTime = this->GBufferRecordingTime;
+					ShadowTime = this->ShadowRecordingTime;	
+
 					return;
 				}
 				auto Job = [this, Execute = Pass.Execute, CommandList]()
@@ -877,7 +884,12 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 					return;
 				}
 				else {
+					LARGE_INTEGER MainRecordingStart{};
+					LARGE_INTEGER MainRecordingEnd{};
+					QueryPerformanceCounter(&MainRecordingStart);
 					Pass.Execute(CommandList);
+					QueryPerformanceCounter(&MainRecordingEnd);
+					MainRecordingTime = static_cast<double>(MainRecordingEnd.QuadPart - MainRecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
 				}
 			},
 			StateTracker);
@@ -886,7 +898,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		RecordingError = std::current_exception();
 	}
 
-	double GBufferTime = 0.0;
+	LARGE_INTEGER WaitStart{};
+	LARGE_INTEGER WaitEnd{};
+	QueryPerformanceCounter(&WaitStart);
 	if (bGBufferSubmitted)
 	{
 		try {
@@ -900,7 +914,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			}
 		}
 	}
-	double ShadowTime = 0.0;
+
 	if (bShadowSubmitted)
 	{
 		try {
@@ -914,7 +928,9 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			}
 		}
 	}
-	
+	QueryPerformanceCounter(&WaitEnd);
+	double WaitingMs = static_cast<double>(WaitEnd.QuadPart - WaitStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
+
 	// 제출한 Worker 작업을 모두 기다린 뒤 오류 전달
 	if (RecordingError)
 	{
@@ -934,8 +950,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		RecordingTimeSamples[RecordingTimeSampleCount - 121] = RecordingMS;
 		GBufferTimeSamples[RecordingTimeSampleCount - 121] = GBufferTime;
 		ShadowTimeSamples[RecordingTimeSampleCount - 121] = ShadowTime;
+		MainTimeSamples[RecordingTimeSampleCount - 121] = MainRecordingTime;
 
 		RecordingTimeSumMs += RecordingMS;
+		WaitingTimeSumMs += WaitingMs;
 		bRecording = true;
 	}
 	if (RecordingTimeSampleCount >= 720 && bRecording)
@@ -943,20 +961,24 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		double AverageRecordingTime = RecordingTimeSumMs / static_cast<double>(RecordingTimeSampleCount - 120.0);
 		double AverageGBufferTime = std::accumulate(GBufferTimeSamples.begin(), GBufferTimeSamples.end(), 0.0) / static_cast<double>(GBufferTimeSamples.size());
 		double AverageShadowTime = std::accumulate(ShadowTimeSamples.begin(), ShadowTimeSamples.end(), 0.0) / static_cast<double>(ShadowTimeSamples.size());
-		
+		double AverageMainTime = std::accumulate(MainTimeSamples.begin(), MainTimeSamples.end(), 0.0) / static_cast<double>(MainTimeSamples.size());
+		double AverageWaitingTime = WaitingTimeSumMs / static_cast<double>(RecordingTimeSampleCount - 120.0);
+
 		sort(RecordingTimeSamples.begin(), RecordingTimeSamples.end());
 		double MinRecordingTime = RecordingTimeSamples.front();
 		double MaxRecordingTime = RecordingTimeSamples.back();
 		double MedianRecordingTime = (RecordingTimeSamples[RecordingTimeSamples.size() / 2] + RecordingTimeSamples[RecordingTimeSamples.size() / 2 + 1]) / 2.0;
 		
-		RecordingTimingLog 
+		RecordingTimingLog
 			<< (bParallelRecording ? "Parallel" : "Sequential") << ','
 			<< AverageRecordingTime << ','
 			<< MinRecordingTime << ','
 			<< MaxRecordingTime << ','
 			<< MedianRecordingTime << ','
 			<< AverageGBufferTime << ','
-			<< AverageShadowTime << '\n';
+			<< AverageShadowTime << ','
+			<< AverageMainTime << ','
+			<< AverageWaitingTime << '\n';
 
 		bRecording = false;
 	}
