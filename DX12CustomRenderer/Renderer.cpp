@@ -852,9 +852,14 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			{
 				if(!bParallelRecording)
 				{
+					LARGE_INTEGER MainRecordingStart{};
+					LARGE_INTEGER MainRecordingEnd{};
+					QueryPerformanceCounter(&MainRecordingStart);
 					Pass.Execute(CommandList);
+					QueryPerformanceCounter(&MainRecordingEnd);
 					GBufferTime = this->GBufferRecordingTime;
 					ShadowTime = this->ShadowRecordingTime;	
+					MainRecordingTime += static_cast<double>(MainRecordingEnd.QuadPart - MainRecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
 
 					return;
 				}
@@ -889,7 +894,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 					QueryPerformanceCounter(&MainRecordingStart);
 					Pass.Execute(CommandList);
 					QueryPerformanceCounter(&MainRecordingEnd);
-					MainRecordingTime = static_cast<double>(MainRecordingEnd.QuadPart - MainRecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
+					MainRecordingTime += static_cast<double>(MainRecordingEnd.QuadPart - MainRecordingStart.QuadPart) * 1000.0 / static_cast<double>(RecordingTimerFrequency.QuadPart);
 				}
 			},
 			StateTracker);
