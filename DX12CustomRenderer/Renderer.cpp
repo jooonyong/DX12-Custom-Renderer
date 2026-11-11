@@ -102,7 +102,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 		D3D12_RESOURCE_DESC ResourceDesc = {};
 		ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		ResourceDesc.Width = sizeof(UINT64) * 2;
+		ResourceDesc.Width = sizeof(uint64_t) * 2;
 		ResourceDesc.Height = 1;
 		ResourceDesc.DepthOrArraySize = 1;
 		ResourceDesc.MipLevels = 1;
@@ -615,6 +615,13 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		CommandQueue.WaitForFence(CurrentFrame.FenceValue);
 	}
 
+	double GpuTime = 0.0;
+	if (CurrentFrame.bGpuTimeStampPending)
+	{
+		ReadGPUTimeStamp(CurrentFrame, GpuTime);
+		OutputDebugStringA(("GPU Time: " + std::to_string(GpuTime) + " ms\n").c_str());
+	}
+
 	auto& Objects = MainScene.GetRenderObjects();
 	if (Objects.size() > MaxRenderObjects)
 	{
@@ -722,6 +729,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			{
 				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex);
 				Renderer::RenderGBufferPass(CommandList, DrawCommands, CurrentFrame, CurrentIndex);
+				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, EndIndex);
 				CommandList->ResolveQueryData(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex, 2, CurrentFrame.GPUTimeStampBuffer.Get(), 0);
 			}
 		);
@@ -857,7 +865,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	bool bGBufferSubmitted = false;
 	bool bShadowSubmitted = false;
 	std::exception_ptr RecordingError = nullptr;
-	constexpr bool bParallelRecording = false;
+	constexpr bool bParallelRecording = true;
 
 	LARGE_INTEGER RecordingStart{};
 	LARGE_INTEGER RecordingEnd{};
@@ -1052,6 +1060,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		return;
 	}
 	CurrentFrame.FenceValue = FenceValue;
+	CurrentFrame.bGpuTimeStampPending = (CurrentRenderMode == RenderMode::E_Raster);
 }
 
 bool Renderer::CreatePassCommandResources(PassCommandResources& Resources)
@@ -3462,6 +3471,30 @@ bool Renderer::InitializeGpuTimestampResources()
 	{
 		return false;
 	}	
+
+	return true;
+}
+
+bool Renderer::ReadGPUTimeStamp(FrameResource& Frame, double& OutGpuTime)
+{
+	D3D12_RANGE ReadRange = { 0, sizeof(uint64_t) * 2 };
+	void* MappedData = nullptr;
+	HRESULT Result = Frame.GPUTimeStampBuffer->Map(0, &ReadRange, &MappedData);
+
+	if (FAILED(Result) || MappedData == nullptr)
+	{
+		return false;
+	}
+
+	const UINT64* Timestamps = static_cast<const UINT64*>(MappedData);
+
+	UINT64 StartTick = Timestamps[0];
+	UINT64 EndTick = Timestamps[1];
+	OutGpuTime = static_cast<double>(EndTick - StartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
+
+	D3D12_RANGE WriteRange = { 0, 0 };
+	Frame.GPUTimeStampBuffer->Unmap(0, &WriteRange);
+	Frame.bGpuTimeStampPending = false;
 
 	return true;
 }

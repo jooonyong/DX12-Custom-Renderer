@@ -75,6 +75,7 @@ struct FrameResource
 	Microsoft::WRL::ComPtr<ID3D12Resource> ReflectionAccumulationConstantBuffer;
 	void* ReflectionAccumulationMappedData = nullptr;
 
+	bool bGpuTimeStampPending = false;
 	Microsoft::WRL::ComPtr<ID3D12Resource> GPUTimeStampBuffer;
 };
 
@@ -222,6 +223,7 @@ public:
 	bool StartRecordingWorkers();
 
 	bool InitializeGpuTimestampResources();
+	bool ReadGPUTimeStamp(FrameResource& Frame, double& OutGpuTime);
 private:
 	RenderMode CurrentRenderMode = RenderMode::E_Raster;
 	std::atomic<uint64_t> PresentedFrameCount{ 0 };
