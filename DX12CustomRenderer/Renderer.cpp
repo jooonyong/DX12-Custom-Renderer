@@ -102,7 +102,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 		D3D12_RESOURCE_DESC ResourceDesc = {};
 		ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		ResourceDesc.Width = sizeof(uint64_t) * 4;
+		ResourceDesc.Width = sizeof(uint64_t) * 8;
 		ResourceDesc.Height = 1;
 		ResourceDesc.DepthOrArraySize = 1;
 		ResourceDesc.MipLevels = 1;
@@ -617,12 +617,17 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	double GBufferGpuTime = 0.0;
 	double ShadowGpuTime = 0.0;
+	double DeferredGpuTime = 0.0;
+	double ToneMappingGpuTime = 0.0;
 	if (CurrentFrame.bGpuTimeStampPending)
 	{
-		if(ReadGPUTimeStamp(CurrentFrame, GBufferGpuTime, ShadowGpuTime))
+		if(ReadRasterGPUTimeStamp(CurrentFrame, GBufferGpuTime, ShadowGpuTime, DeferredGpuTime, ToneMappingGpuTime))
 		{
 			OutputDebugStringA(("GBuffer GPU Time: " + std::to_string(GBufferGpuTime) + " ms\n").c_str());
 			OutputDebugStringA(("Shadow GPU Time: " + std::to_string(ShadowGpuTime) + " ms\n").c_str());
+			OutputDebugStringA(("Deferred GPU Time: " + std::to_string(DeferredGpuTime) + " ms\n").c_str());
+			OutputDebugStringA(("ToneMapping GPU Time: " + std::to_string(ToneMappingGpuTime) + " ms\n").c_str());
+			OutputDebugStringA("----------------------------------\n");
 		}
 		else
 		{
@@ -721,7 +726,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		}
 		
 	}
-	UINT StartIndex = CurrentIndex * 4;
+	UINT StartIndex = CurrentIndex * 8;
 	UINT EndIndex = StartIndex + 1;
 
 	if (CurrentRenderMode == RenderMode::E_Raster)
@@ -764,7 +769,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			},
 			[&](ID3D12GraphicsCommandList* CommandList)
 			{
+				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex + 4);
 				Renderer::RenderDeferredLightingPass(CommandList, CurrentFrame);
+				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, EndIndex + 4);
+				CommandList->ResolveQueryData(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex + 4, 2, CurrentFrame.GPUTimeStampBuffer.Get(), sizeof(uint64_t) * 4);
 			}
 		);
 	}
@@ -867,7 +875,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		},
 		[&](ID3D12GraphicsCommandList* CommandList)
 		{
+			CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex + 6);
 			Renderer::RenderToneMapping(CommandList, CurrentFrame);
+			CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, EndIndex + 6);
+			CommandList->ResolveQueryData(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex + 6, 2, CurrentFrame.GPUTimeStampBuffer.Get(), sizeof(uint64_t) * 6);
 		}
 	);
 
@@ -3469,7 +3480,7 @@ bool Renderer::InitializeGpuTimestampResources()
 {
 	D3D12_QUERY_HEAP_DESC QueryHeapDesc = {};
 	QueryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
-	QueryHeapDesc.Count = 4 * BufferCount; //GBufferPass Start/End, ShadowPass Start/End
+	QueryHeapDesc.Count = 8 * BufferCount; //GBufferPass Start/End, ShadowPass Start/End DeferredPass Start/End, ToneMappingPass Start/End
 	QueryHeapDesc.NodeMask = 0;
 
 	HRESULT Result = Device.GetDevice()->CreateQueryHeap(&QueryHeapDesc, IID_PPV_ARGS(&GPUTimeStampQueryHeap));
@@ -3486,9 +3497,9 @@ bool Renderer::InitializeGpuTimestampResources()
 	return true;
 }
 
-bool Renderer::ReadGPUTimeStamp(FrameResource& Frame, double& OutGBufferGpuTime, double& OutShadowGpuTime)
+bool Renderer::ReadRasterGPUTimeStamp(FrameResource& Frame, double& OutGBufferGpuTime, double& OutShadowGpuTime, double& OutDeferredGpuTime, double& OutToneMappingGpuTime)
 {
-	D3D12_RANGE ReadRange = { 0, sizeof(uint64_t) * 4};
+	D3D12_RANGE ReadRange = { 0, sizeof(uint64_t) * 8};
 	void* MappedData = nullptr;
 	HRESULT Result = Frame.GPUTimeStampBuffer->Map(0, &ReadRange, &MappedData);
 
@@ -3503,9 +3514,15 @@ bool Renderer::ReadGPUTimeStamp(FrameResource& Frame, double& OutGBufferGpuTime,
 	UINT64 GBufferEndTick = Timestamps[1];
 	UINT64 ShadowStartTick = Timestamps[2];
 	UINT64 ShadowEndTick = Timestamps[3];
+	UINT64 DeferredStartTick = Timestamps[4];
+	UINT64 DeferredEndTick = Timestamps[5];
+	UINT64 ToneMappingStratTick = Timestamps[6];
+	UINT64 ToneMappingEndTick = Timestamps[7];
 
 	OutGBufferGpuTime = static_cast<double>(GBufferEndTick - GBufferStartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
 	OutShadowGpuTime = static_cast<double>(ShadowEndTick - ShadowStartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
+	OutDeferredGpuTime = static_cast<double>(DeferredEndTick - DeferredStartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
+	OutToneMappingGpuTime = static_cast<double>(ToneMappingEndTick - ToneMappingStratTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);	
 
 	D3D12_RANGE WriteRange = { 0, 0 };
 	Frame.GPUTimeStampBuffer->Unmap(0, &WriteRange);
