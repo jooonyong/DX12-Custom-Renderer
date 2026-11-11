@@ -223,7 +223,7 @@ public:
 	bool StartRecordingWorkers();
 
 	bool InitializeGpuTimestampResources();
-	bool ReadGPUTimeStamp(FrameResource& Frame, double& OutGpuTime);
+	bool ReadGPUTimeStamp(FrameResource& Frame, double& OutGpuTime, double& OutShadowGpuTime);
 private:
 	RenderMode CurrentRenderMode = RenderMode::E_Raster;
 	std::atomic<uint64_t> PresentedFrameCount{ 0 };

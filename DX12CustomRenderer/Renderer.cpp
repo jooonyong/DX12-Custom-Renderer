@@ -102,7 +102,7 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 
 		D3D12_RESOURCE_DESC ResourceDesc = {};
 		ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		ResourceDesc.Width = sizeof(uint64_t) * 2;
+		ResourceDesc.Width = sizeof(uint64_t) * 4;
 		ResourceDesc.Height = 1;
 		ResourceDesc.DepthOrArraySize = 1;
 		ResourceDesc.MipLevels = 1;
@@ -615,11 +615,19 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		CommandQueue.WaitForFence(CurrentFrame.FenceValue);
 	}
 
-	double GpuTime = 0.0;
+	double GBufferGpuTime = 0.0;
+	double ShadowGpuTime = 0.0;
 	if (CurrentFrame.bGpuTimeStampPending)
 	{
-		ReadGPUTimeStamp(CurrentFrame, GpuTime);
-		OutputDebugStringA(("GPU Time: " + std::to_string(GpuTime) + " ms\n").c_str());
+		if(ReadGPUTimeStamp(CurrentFrame, GBufferGpuTime, ShadowGpuTime))
+		{
+			OutputDebugStringA(("GBuffer GPU Time: " + std::to_string(GBufferGpuTime) + " ms\n").c_str());
+			OutputDebugStringA(("Shadow GPU Time: " + std::to_string(ShadowGpuTime) + " ms\n").c_str());
+		}
+		else
+		{
+			OutputDebugStringA("Failed to read GPU timestamp.\n");
+		}
 	}
 
 	auto& Objects = MainScene.GetRenderObjects();
@@ -713,7 +721,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 		}
 		
 	}
-	UINT StartIndex = CurrentIndex * 2;
+	UINT StartIndex = CurrentIndex * 4;
 	UINT EndIndex = StartIndex + 1;
 
 	if (CurrentRenderMode == RenderMode::E_Raster)
@@ -739,7 +747,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 			},
 			[&](ID3D12GraphicsCommandList* CommandList)
 			{
+				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex + 2);
 				Renderer::RenderShadowPass(CommandList, DrawCommands, CurrentFrame);
+				CommandList->EndQuery(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, EndIndex + 2);
+				CommandList->ResolveQueryData(GPUTimeStampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, StartIndex + 2, 2, CurrentFrame.GPUTimeStampBuffer.Get(), sizeof(uint64_t) * 2);
 			}
 		);
 		Graph.AddPass("DeferredLightingPass",
@@ -3458,7 +3469,7 @@ bool Renderer::InitializeGpuTimestampResources()
 {
 	D3D12_QUERY_HEAP_DESC QueryHeapDesc = {};
 	QueryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
-	QueryHeapDesc.Count = 2 * BufferCount;
+	QueryHeapDesc.Count = 4 * BufferCount; //GBufferPass Start/End, ShadowPass Start/End
 	QueryHeapDesc.NodeMask = 0;
 
 	HRESULT Result = Device.GetDevice()->CreateQueryHeap(&QueryHeapDesc, IID_PPV_ARGS(&GPUTimeStampQueryHeap));
@@ -3475,9 +3486,9 @@ bool Renderer::InitializeGpuTimestampResources()
 	return true;
 }
 
-bool Renderer::ReadGPUTimeStamp(FrameResource& Frame, double& OutGpuTime)
+bool Renderer::ReadGPUTimeStamp(FrameResource& Frame, double& OutGBufferGpuTime, double& OutShadowGpuTime)
 {
-	D3D12_RANGE ReadRange = { 0, sizeof(uint64_t) * 2 };
+	D3D12_RANGE ReadRange = { 0, sizeof(uint64_t) * 4};
 	void* MappedData = nullptr;
 	HRESULT Result = Frame.GPUTimeStampBuffer->Map(0, &ReadRange, &MappedData);
 
@@ -3488,9 +3499,13 @@ bool Renderer::ReadGPUTimeStamp(FrameResource& Frame, double& OutGpuTime)
 
 	const UINT64* Timestamps = static_cast<const UINT64*>(MappedData);
 
-	UINT64 StartTick = Timestamps[0];
-	UINT64 EndTick = Timestamps[1];
-	OutGpuTime = static_cast<double>(EndTick - StartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
+	UINT64 GBufferStartTick = Timestamps[0];
+	UINT64 GBufferEndTick = Timestamps[1];
+	UINT64 ShadowStartTick = Timestamps[2];
+	UINT64 ShadowEndTick = Timestamps[3];
+
+	OutGBufferGpuTime = static_cast<double>(GBufferEndTick - GBufferStartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
+	OutShadowGpuTime = static_cast<double>(ShadowEndTick - ShadowStartTick) * 1000.0 / static_cast<double>(GPUTimeFrequency);
 
 	D3D12_RANGE WriteRange = { 0, 0 };
 	Frame.GPUTimeStampBuffer->Unmap(0, &WriteRange);
