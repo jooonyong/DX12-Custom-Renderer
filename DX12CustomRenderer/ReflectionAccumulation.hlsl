@@ -76,7 +76,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
                 continue;
             }
             
-            float GausianWeight = GaussianKernel[i + 2] * GaussianKernel[j + 2];;
+            float GausianWeight = GaussianKernel[i + 2] * GaussianKernel[j + 2];
        
             float NeighborDepth = SceneDepth.Load(int3(Pixel + Offset, 0));
             if (NeighborDepth >= 1.0f)

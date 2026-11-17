@@ -293,10 +293,12 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferA; //BaseColor
 	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferB; //Normal
 	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferC; //MRTexture
+	Microsoft::WRL::ComPtr<ID3D12Resource> GBufferVelocity; //MotionVector
 
 	D3D12_CPU_DESCRIPTOR_HANDLE GBufferARTV;
 	D3D12_CPU_DESCRIPTOR_HANDLE GBufferBRTV;
 	D3D12_CPU_DESCRIPTOR_HANDLE GBufferCRTV;
+	D3D12_CPU_DESCRIPTOR_HANDLE GBufferVelocityRTV;
 
 	D3D12DescriptorHandle GBufferASRV;
 	D3D12DescriptorHandle GBufferBSRV;

@@ -320,7 +320,7 @@ void Renderer::RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::ve
 	CommandList->RSSetScissorRects(1, &ScissorRect);
 
 	DSV = DSVHeap->GetCPUDescriptorHandleForHeapStart();
-	CommandList->OMSetRenderTargets(3, &GBufferARTV, TRUE, &DSV);
+	CommandList->OMSetRenderTargets(4, &GBufferARTV, TRUE, &DSV);
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -330,6 +330,7 @@ void Renderer::RenderGBufferPass(ID3D12GraphicsCommandList* CommandList, std::ve
 	CommandList->ClearRenderTargetView(GBufferARTV, ClearColor, 0, nullptr);
 	CommandList->ClearRenderTargetView(GBufferBRTV, ClearColor, 0, nullptr);
 	CommandList->ClearRenderTargetView(GBufferCRTV, ClearColor, 0, nullptr);
+	CommandList->ClearRenderTargetView(GBufferVelocityRTV, ClearColor, 0, nullptr);
 
 	CommandList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
@@ -736,6 +737,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
 				{ GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
 				{ GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ GBufferVelocity.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
 				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
 			},
 			[&](ID3D12GraphicsCommandList* CommandList)
@@ -783,6 +785,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{ GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
 				{ GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
 				{ GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
+				{ GBufferVelocity.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, RenderGraphAccess::Write},
 				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, RenderGraphAccess::Write}
 			},
 			[&](ID3D12GraphicsCommandList* CommandList)
@@ -819,6 +822,7 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{ RaytracedReflection.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ GBufferB.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
+				{ GBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ PrevHistory, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ OutputHistory, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write},
 
@@ -1510,7 +1514,8 @@ bool Renderer::CreateGBufferPipelineState()
 	PipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	PipelineStateDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	PipelineStateDesc.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	PipelineStateDesc.NumRenderTargets = 3;
+	PipelineStateDesc.RTVFormats[3] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	PipelineStateDesc.NumRenderTargets = 4;
 	PipelineStateDesc.SampleDesc.Count = 1;
 	PipelineStateDesc.SampleDesc.Quality = 0;
 	PipelineStateDesc.SampleMask = UINT_MAX;
@@ -2370,8 +2375,10 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 		&ClearValueNormal, IID_PPV_ARGS(&GBufferB));
 	HRESULT Result3 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferADesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
 		&ClearValue, IID_PPV_ARGS(&GBufferC));
+	HRESULT Result4 = Device.GetDevice()->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &GBufferBDesc, D3D12_RESOURCE_STATE_RENDER_TARGET,
+		&ClearValueNormal, IID_PPV_ARGS(&GBufferVelocity));
 
-	if (FAILED(Result1) || FAILED(Result2) || FAILED(Result3))
+	if (FAILED(Result1) || FAILED(Result2) || FAILED(Result3) || FAILED(Result4))
 	{
 		return false;
 	}
@@ -2379,11 +2386,12 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	StateTracker.RegisterResource(GBufferA.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 	StateTracker.RegisterResource(GBufferB.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 	StateTracker.RegisterResource(GBufferC.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	StateTracker.RegisterResource(GBufferVelocity.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 	
 	//RTV Descriptor¿ë DescriptorHeap »ý¼º
 	D3D12_DESCRIPTOR_HEAP_DESC GBufferDescHeapDesc{};
 	GBufferDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	GBufferDescHeapDesc.NumDescriptors = 3;
+	GBufferDescHeapDesc.NumDescriptors = 4;
 	GBufferDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
 	HRESULT Result = Device.GetDevice()->CreateDescriptorHeap(&GBufferDescHeapDesc, IID_PPV_ARGS(&GBufferRTVDescriptorHeap));
@@ -2405,12 +2413,14 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 
 	UINT RTVDescriptorSize = Device.GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	GBufferARTV.ptr = GBufferRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
-	GBufferBRTV.ptr = GBufferRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + static_cast<SIZE_T>(RTVDescriptorSize);
-	GBufferCRTV.ptr = GBufferRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + static_cast<SIZE_T>(RTVDescriptorSize * 2);
-	
+	GBufferBRTV.ptr = GBufferARTV.ptr + static_cast<SIZE_T>(RTVDescriptorSize);
+	GBufferCRTV.ptr = GBufferARTV.ptr + static_cast<SIZE_T>(RTVDescriptorSize * 2);
+	GBufferVelocityRTV.ptr = GBufferARTV.ptr + static_cast<SIZE_T>(RTVDescriptorSize * 3);
+
 	Device.GetDevice()->CreateRenderTargetView(GBufferA.Get(), &RTVADesc, GBufferARTV);
 	Device.GetDevice()->CreateRenderTargetView(GBufferB.Get(), &RTVBDesc, GBufferBRTV);
 	Device.GetDevice()->CreateRenderTargetView(GBufferC.Get(), &RTVCDesc, GBufferCRTV);
+	Device.GetDevice()->CreateRenderTargetView(GBufferVelocity.Get(), &RTVBDesc, GBufferVelocityRTV);
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC GBufferASRVDesc{};
 	GBufferASRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -2431,6 +2441,7 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	Device.GetDevice()->CreateShaderResourceView(GBufferA.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 0));
 	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 1));
 	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 2));
+	Device.GetDevice()->CreateShaderResourceView(GBufferVelocity.Get(), &GBufferBSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 1));
 
 	return true;
 }

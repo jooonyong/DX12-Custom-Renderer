@@ -8,14 +8,18 @@ cbuffer ObjectBuffer : register(b0)
 {
     float4x4 World;
     float4x4 WorldInverseTranspose;
+    float4x4 PreviousWorld;
 }
 
 cbuffer SceneBuffer : register(b1)
 {
     float4x4 View;
     float4x4 Projection;
+    float4x4 PreviousViewProjection;
+    float HistoryValid;
     float3 CameraPosition;
-    float Padding;
+    float2 RenderTargetSize;
+    float2 Padding;
 }
 cbuffer MaterialBuffer : register(b2)
 {
@@ -40,6 +44,7 @@ struct VSOutput
     float2 UV       : TEXCOORD;
     float3 WorldNormal   : TEXCOORD1;
     float4 WorldTangent  : TEXCOORD2;
+    float4 PrevClipPosition : TEXCOORD3;
 };
 
 struct GBufferOutput
@@ -47,6 +52,7 @@ struct GBufferOutput
     float4 GBufferA : SV_Target0;
     float4 GBufferB : SV_Target1;
     float4 GBufferC : SV_Target2;
+    float4 GBufferVelocity : SV_Target3;
 };
 
 VSOutput VSMain(VSInput Input)
@@ -59,11 +65,15 @@ VSOutput VSMain(VSInput Input)
   
     Output.Position = mul(float4(WorldPosition, 1.0f), View);
     Output.Position = mul(Output.Position, Projection);
-
+    
+    float4 PreviousWorldPosition = mul(float4(Input.Position, 1.0f), PreviousWorld);
+    float4 PreviousClipPosition = mul(PreviousWorldPosition, PreviousViewProjection);
+    
     Output.UV = Input.UV;
     Output.WorldNormal = normalize(WorldNormal);
     Output.WorldTangent = float4(T, Input.Tangent.w);
-
+    Output.PrevClipPosition = PreviousClipPosition;
+    
     return Output;
 }
 
@@ -101,5 +111,16 @@ GBufferOutput PSMain(VSOutput Input)
     float MaterialMetallic = saturate(MR.b * Metallic);
     Output.GBufferC = float4(MaterialRoughness, MaterialMetallic, 0.0f, 1.0f);
 
+    //MotionVector
+    
+    float2 CurrentUV = Input.Position.xy / RenderTargetSize;
+    float2 PrevNDC = Input.PrevClipPosition.xy / Input.PrevClipPosition.w;
+
+    float2 PrevUV;
+    PrevUV.x = PrevNDC.x * 0.5f + 0.5f;
+    PrevUV.y = 0.5f - PrevNDC.y * 0.5f;
+    
+    float4 MotionVector = CurrentUV - PrevUV;
+    Output.GBufferVelocity = float4(MotionVector.x, MotionVector.y, HistoryValid, 0.0f);
     return Output;
 }
