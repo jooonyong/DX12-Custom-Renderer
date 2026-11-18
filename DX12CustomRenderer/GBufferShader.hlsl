@@ -19,8 +19,8 @@ cbuffer SceneBuffer : register(b1)
     float4x4 View;
     float4x4 Projection;
     float4x4 PreviousViewProjection;
-    float HistoryValid;
     float3 CameraPosition;
+    float HistoryValid;
     float2 RenderTargetSize;
     float2 Padding;
 }
@@ -117,13 +117,22 @@ GBufferOutput PSMain(VSOutput Input)
     //MotionVector
     
     float2 CurrentUV = Input.Position.xy / RenderTargetSize;
-    float2 PrevNDC = Input.PrevClipPosition.xy / Input.PrevClipPosition.w;
+    float2 MotionVector = float2(0.0f, 0.0f);
+    float MotionValid = 0.0f;
 
-    float2 PrevUV;
-    PrevUV.x = PrevNDC.x * 0.5f + 0.5f;
-    PrevUV.y = 0.5f - PrevNDC.y * 0.5f;
+    if (HistoryValid > 0.5f && ObjectHistoryValid > 0.5f && Input.PrevClipPosition.w > 1e-6f)
+    {
+        float2 PrevNDC = Input.PrevClipPosition.xy / Input.PrevClipPosition.w;
+        float2 PrevUV = float2(PrevNDC.x * 0.5f + 0.5f, 0.5f - PrevNDC.y * 0.5f);
+
+        if (all(isfinite(PrevUV)) && all(PrevUV >= 0.0f) && all(PrevUV <= 1.0f))
+        {
+            MotionVector = CurrentUV - PrevUV;
+            MotionValid = 1.0f;
+        }
+    }
+
+    Output.GBufferVelocity = float4(MotionVector, MotionValid, 0.0f);
     
-    float2 MotionVector = CurrentUV - PrevUV;
-    Output.GBufferVelocity = float4(MotionVector.x, MotionVector.y, HistoryValid, 0.0f);
     return Output;
 }

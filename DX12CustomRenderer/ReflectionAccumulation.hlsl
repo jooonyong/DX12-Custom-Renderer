@@ -120,9 +120,19 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     
     float2 CurrentUV = (float2(Pixel) + 0.5f) / float2(Width, Height);
-    float2 Motion = GBufferVelocity.Load(int3(Pixel, 0)).xy;
+    float4 Motion = GBufferVelocity.Load(int3(Pixel, 0));
+    if (HistoryFrameCount == 0 || Motion.z < 0.5f)
+    {
+        OutHistory[Pixel] = float4(CurrentColor, 1.0f);
+        return;
+    }
+    float2 PrevUV = CurrentUV - Motion.xy;
+    if (!all(isfinite(PrevUV)) || any(PrevUV < 0.0f) || any(PrevUV > 1.0f))
+    {
+        OutHistory[Pixel] = float4(CurrentColor, 1.0f);
+        return;
+    }
 
-    float2 PrevUV = CurrentUV - Motion;
     float3 PrevColor = PrevHistory.SampleLevel(LinearSampler, PrevUV, 0).rgb;
     
     if (any(isnan(PrevColor)) || any(isinf(PrevColor)))
