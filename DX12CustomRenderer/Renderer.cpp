@@ -602,6 +602,7 @@ void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* Comma
 	CommandList->SetComputeRootDescriptorTable(4, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 1));
 	CommandList->SetComputeRootDescriptorTable(5, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 3));
 	CommandList->SetComputeRootConstantBufferView(6, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress());
+	CommandList->SetComputeRootDescriptorTable(7, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 4));
 
 	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
 }
@@ -652,35 +653,57 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	std::vector<DrawCommand> DrawCommands;
 	BuildDrawCommand(MainScene, DrawCommands);
 
-	for (int i= 0; i<Objects.size();i++)
+	for (int i = 0; i < Objects.size(); i++)
 	{
 		//ObjectConstantBuffer Data세팅
 		ObjectConstant ObjectConstantData;
 		DirectX::XMMATRIX World = DirectX::XMLoadFloat4x4(&Objects[i].World);
 		DirectX::XMMATRIX WorldInverseTranspose = XMMatrixInverse(nullptr, World);
+		
+		auto It = PreviousWorldMatrices.find(Objects[i].ObjectID);
+		DirectX::XMMATRIX PreviousWorld = World;
 
+		if (It != PreviousWorldMatrices.end())
+		{
+			// 이전 프레임에도 존재했던 오브젝트
+			PreviousWorld = DirectX::XMLoadFloat4x4(&It->second);
+			ObjectConstantData.ObjectHistoryValid = 1.0f;
+		}
+		else
+		{
+			// 이번 프레임에 처음 등장한 오브젝트
+			PreviousWorld = World;
+			ObjectConstantData.ObjectHistoryValid = 0.0f;
+		}
 		DirectX::XMStoreFloat4x4(&ObjectConstantData.WorldMatrix, DirectX::XMMatrixTranspose(World));
 		DirectX::XMStoreFloat4x4(&ObjectConstantData.WorldInverseTranspose, DirectX::XMMatrixTranspose(WorldInverseTranspose));
+		DirectX::XMStoreFloat4x4(&ObjectConstantData.PrevWorldMatrix, DirectX::XMMatrixTranspose(PreviousWorld));
 
 		memcpy(CurrentFrame.ObjectConstantBufferMappedData + i * ((sizeof(ObjectConstant) + 255) & ~255), &ObjectConstantData, sizeof(ObjectConstant));
 }
 	//Angle += 0.001f;
 	DirectX::XMMATRIX View = MainCamera.GetViewMatrix();
 	DirectX::XMMATRIX Projection = MainCamera.GetProjectionMatrix();
+	DirectX::XMMATRIX ViewProjection = DirectX::XMMatrixMultiply(View, Projection);
+	DirectX::XMMATRIX PreviousViewProjection = bPrevReflectionViewProjection ? DirectX::XMLoadFloat4x4(&PreviousReflectionViewProjection) : ViewProjection;
 	
 	SceneConstant SceneConstantData;
 	
 	DirectX::XMStoreFloat4x4(&SceneConstantData.ViewMatrix, DirectX::XMMatrixTranspose(View));
 	DirectX::XMStoreFloat4x4(&SceneConstantData.ProjectionMatrix, DirectX::XMMatrixTranspose(Projection));
+	DirectX::XMStoreFloat4x4(&SceneConstantData.PreviousViewProjection, DirectX::XMMatrixTranspose(PreviousViewProjection));
+
 	SceneConstantData.CameraPosition = MainCamera.GetPosition();
+	SceneConstantData.HistoryValid = bPrevReflectionViewProjection ? 1.0f : 0.0f;
+	SceneConstantData.RenderTargetSize = { static_cast<float>(Width), static_cast<float>(Height) };
 
 	memcpy(CurrentFrame.SceneConstantBufferMappedData, &SceneConstantData, sizeof(SceneConstant));
+
 	memcpy(CurrentFrame.DirLgtConstantBufferMappedData, &DirLgtData, sizeof(DirectionalLightConstant));
 	
 	UpdateShadowPassConstant(CurrentFrame);
 	
 	DeferredPassConstant InverseViewData;
-	DirectX::XMMATRIX ViewProjection = DirectX::XMMatrixMultiply(View, Projection);
 	DirectX::XMMATRIX InverseViewProjection = DirectX::XMMatrixInverse(nullptr, ViewProjection);
 	DirectX::XMStoreFloat4x4(&InverseViewData.InverseViewMatrix,XMMatrixTranspose(InverseViewProjection));
 	InverseViewData.CameraPosition = MainCamera.GetPosition();
@@ -688,10 +711,10 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 
 	memcpy(CurrentFrame.DeferredPassMappedData, &InverseViewData, sizeof(DeferredPassConstant));
 
-	if (CurrentRenderMode == RenderMode::E_Hybrid)
-	{
-		UpdateReflectionHistory(ViewProjection);
-	}
+	//if (CurrentRenderMode == RenderMode::E_Hybrid)
+	//{
+	//	UpdateReflectionHistory(ViewProjection);
+	//}
 
 	ID3D12Resource* PrevHistory = ReflectionHistoryWriteIndex == 0 ? ReflectionHistory1.Get() : ReflectionHistory2.Get();
 	ID3D12Resource* OutputHistory = ReflectionHistoryWriteIndex == 0 ? ReflectionHistory2.Get() : ReflectionHistory1.Get();
@@ -1087,6 +1110,21 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	}
 	CurrentFrame.FenceValue = FenceValue;
 	CurrentFrame.bGpuTimeStampPending = (CurrentRenderMode == RenderMode::E_Raster);
+	
+	PreviousWorldMatrices.clear();
+	PreviousWorldMatrices.reserve(Objects.size());
+	
+	for (const RenderObject& Object : Objects)
+	{
+		PreviousWorldMatrices.emplace(Object.ObjectID, Object.World);
+	}
+
+	// 다음 프레임을 위해 PreviousViewProjection 갱신
+	if (CurrentRenderMode == RenderMode::E_Hybrid)
+	{
+		DirectX::XMStoreFloat4x4(&PreviousReflectionViewProjection,	ViewProjection);
+		bPrevReflectionViewProjection = true;
+	}
 }
 
 bool Renderer::CreatePassCommandResources(PassCommandResources& Resources)
@@ -1480,7 +1518,7 @@ bool Renderer::CreateGBufferPipelineState()
 			0
 		},
 		{
-			"Tangent",
+			"TANGENT",
 			0,
 			DXGI_FORMAT_R32G32B32A32_FLOAT,
 			0,
@@ -1830,7 +1868,14 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	DepthRange.RegisterSpace = 0;
 	DepthRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParam[7]{};
+	D3D12_DESCRIPTOR_RANGE VelocityRange{};
+	VelocityRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	VelocityRange.NumDescriptors = 1;
+	VelocityRange.BaseShaderRegister = 4;
+	VelocityRange.RegisterSpace = 0;
+	VelocityRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParam[8]{};
 	RootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParam[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParam[0].DescriptorTable.pDescriptorRanges = &ReflectionTextureRange; //t0 ReflectionTexture;
@@ -1866,12 +1911,32 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	RootParam[6].Descriptor.ShaderRegister = 1;
 	RootParam[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	RootParam[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[7].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[7].DescriptorTable.pDescriptorRanges = &VelocityRange; //t4 GBufferVelocity
+	RootParam[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
+	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.MipLODBias = 0.0f;
+	SamplerDesc.MaxAnisotropy = 1;
+	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	SamplerDesc.MinLOD = 0.0f;
+	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	SamplerDesc.ShaderRegister = 0; ///s0
+	SamplerDesc.RegisterSpace = 0;
+	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 	RootDesc.NumParameters = _countof(RootParam);
-	RootDesc.NumStaticSamplers = 0;
+	RootDesc.NumStaticSamplers = 1;
 	RootDesc.pParameters = RootParam;
-	RootDesc.pStaticSamplers = nullptr;
+	RootDesc.pStaticSamplers = &SamplerDesc;
 
 	Microsoft::WRL::ComPtr<ID3DBlob> SerializedRootSignature;
 	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
@@ -2437,11 +2502,12 @@ bool Renderer::CreateGBuffers(uint32_t Width, uint32_t Height)
 	GBufferBSRVDesc.Texture2D.MipLevels = 1;
 
 	GBufferDescriptorTable = SRVDescriptorAllocator.Allocate(4);
-	
+	D3D12DescriptorHandle GBufferVelocitySRV = SRVDescriptorAllocator.Allocate(1);
+
 	Device.GetDevice()->CreateShaderResourceView(GBufferA.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 0));
 	Device.GetDevice()->CreateShaderResourceView(GBufferB.Get(), &GBufferBSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 1));
 	Device.GetDevice()->CreateShaderResourceView(GBufferC.Get(), &GBufferASRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 2));
-	Device.GetDevice()->CreateShaderResourceView(GBufferVelocity.Get(), &GBufferBSRVDesc, SRVDescriptorAllocator.GetCPUHandle(GBufferDescriptorTable, 1));
+	Device.GetDevice()->CreateShaderResourceView(GBufferVelocity.Get(), &GBufferBSRVDesc, GBufferVelocitySRV.CPU);
 
 	return true;
 }

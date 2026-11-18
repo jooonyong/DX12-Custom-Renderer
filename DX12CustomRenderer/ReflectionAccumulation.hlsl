@@ -3,6 +3,9 @@ Texture2D<float4> PrevHistory : register(t1);
 RWTexture2D<float4> OutHistory : register(u0);
 Texture2D<float4> GBufferB : register(t2); //normal
 Texture2D<float> SceneDepth : register(t3); //Depth
+Texture2D<float4> GBufferVelocity : register(t4); //MotionVector
+
+SamplerState LinearSampler : register(s0);
 
 static const float GaussianKernel[5] =
 {
@@ -115,7 +118,13 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
         OutHistory[Pixel] = float4(CurrentColor, 1.0f);
         return;
     }
-    float3 PrevColor = PrevHistory.Load(int3(Pixel, 0)).xyz;
+    
+    float2 CurrentUV = (float2(Pixel) + 0.5f) / float2(Width, Height);
+    float2 Motion = GBufferVelocity.Load(int3(Pixel, 0)).xy;
+
+    float2 PrevUV = CurrentUV - Motion;
+    float3 PrevColor = PrevHistory.SampleLevel(LinearSampler, PrevUV, 0).rgb;
+    
     if (any(isnan(PrevColor)) || any(isinf(PrevColor)))
     {
         OutHistory[Pixel] = float4(0.0f, 1.0f, 0.0f, 1.0f);

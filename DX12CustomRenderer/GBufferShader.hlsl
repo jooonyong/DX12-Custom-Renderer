@@ -9,6 +9,9 @@ cbuffer ObjectBuffer : register(b0)
     float4x4 World;
     float4x4 WorldInverseTranspose;
     float4x4 PreviousWorld;
+    
+    float ObjectHistoryValid;
+    float3 ObjectPadding;
 }
 
 cbuffer SceneBuffer : register(b1)
@@ -35,7 +38,7 @@ struct VSInput
     float4 Color    : COLOR;
     float2 UV       : TEXCOORD;
     float3 Normal   : NORMAL;
-    float4 Tangent  : Tangent;
+    float4 Tangent  : TANGENT;
 };
 
 struct VSOutput
@@ -120,7 +123,7 @@ GBufferOutput PSMain(VSOutput Input)
     PrevUV.x = PrevNDC.x * 0.5f + 0.5f;
     PrevUV.y = 0.5f - PrevNDC.y * 0.5f;
     
-    float4 MotionVector = CurrentUV - PrevUV;
+    float2 MotionVector = CurrentUV - PrevUV;
     Output.GBufferVelocity = float4(MotionVector.x, MotionVector.y, HistoryValid, 0.0f);
     return Output;
 }

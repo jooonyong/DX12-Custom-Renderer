@@ -7,6 +7,7 @@
 
 struct RenderObject
 {
+    uint64_t ObjectID;
     std::shared_ptr<RenderModel> Model;
     DirectX::XMFLOAT4X4 World;
 

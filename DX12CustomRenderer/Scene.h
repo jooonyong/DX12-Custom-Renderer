@@ -4,7 +4,7 @@
 class Scene
 {
 public:
-    void AddRenderObject(const RenderObject& Object);
+    uint64_t AddRenderObject(const RenderObject& Object);
     const std::vector<RenderObject>& GetRenderObjects() const;
 
 private:

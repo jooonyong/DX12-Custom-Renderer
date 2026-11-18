@@ -83,15 +83,21 @@ struct ObjectConstant
 {
 	DirectX::XMFLOAT4X4 WorldMatrix;
 	DirectX::XMFLOAT4X4 WorldInverseTranspose;
+	DirectX::XMFLOAT4X4 PrevWorldMatrix;
+	float ObjectHistoryValid = 0.0f;
+	float Padding[3]{};
 };
 
 struct SceneConstant
 {
 	DirectX::XMFLOAT4X4 ViewMatrix;
 	DirectX::XMFLOAT4X4 ProjectionMatrix;
-
+	DirectX::XMFLOAT4X4 PreviousViewProjection;
 	DirectX::XMFLOAT3 CameraPosition;
-	float Padding;
+	float HistoryValid;
+
+	DirectX::XMFLOAT2 RenderTargetSize;
+	DirectX::XMFLOAT2 Padding;
 };
 struct DeferredPassConstant
 {
@@ -391,5 +397,7 @@ private:
 	std::vector<double> MainTimeSamples;
 
 	Microsoft::WRL::ComPtr<ID3D12QueryHeap> GPUTimeStampQueryHeap;
-	uint64_t GPUTimeFrequency = 0.0;
+	uint64_t GPUTimeFrequency = 0;
+
+	std::unordered_map<uint64_t, DirectX::XMFLOAT4X4> PreviousWorldMatrices;
 };
