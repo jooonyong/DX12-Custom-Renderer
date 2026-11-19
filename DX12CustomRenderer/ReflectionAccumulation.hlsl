@@ -4,7 +4,7 @@ RWTexture2D<float4> OutHistory : register(u0);
 Texture2D<float4> GBufferB : register(t2); //normal
 Texture2D<float> SceneDepth : register(t3); //Depth
 Texture2D<float4> GBufferVelocity : register(t4); //MotionVector
-Texture2D<float4> PrevDepthTexture : register(t5); //PrevDepth
+Texture2D<float> PrevDepthTexture : register(t5); //PrevDepth
 
 SamplerState LinearSampler : register(s0);
 SamplerState PointSampler : register(s1);  
@@ -54,7 +54,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     float NormalLengthSq = dot(Normal, Normal);
     if (!isfinite(NormalLengthSq) || NormalLengthSq <= 1e-8f)
     {
-        OutHistory[Pixel] = float4(0, 0, 0, 1);
+        OutHistory[Pixel] = float4(0, 0, 0, 0);
         return;
     }
 
@@ -65,7 +65,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Depth = SceneDepth.Load(int3(Pixel, 0));
     if (Depth >= 1.0f)
     {
-        OutHistory[Pixel] = float4(0, 0, 0, 1);
+        OutHistory[Pixel] = float4(0, 0, 0, 0);
         return;
     }
     
@@ -103,7 +103,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
             NeighborNormal *= rsqrt(NeighborLengthSq);
             NormalWeight = pow(saturate(dot(Normal, NeighborNormal)), 16);
             
-            float CombinedWeight = GausianWeight * NormalWeight;// * DepthWeight;
+            float CombinedWeight = GausianWeight * NormalWeight * DepthWeight;
             
             CurrentColor += (CurrentReflection.Load(int3(Pixel + Offset, 0)).xyz) * CombinedWeight;
             TotalWeight += CombinedWeight;
@@ -123,7 +123,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     
     float2 CurrentUV = (float2(Pixel) + 0.5f) / float2(Width, Height);
     float4 Motion = GBufferVelocity.Load(int3(Pixel, 0));
-    if (HistoryFrameCount == 0 || Motion.z < 0.5f)
+    if (Motion.z < 0.5f)
     {
         OutHistory[Pixel] = float4(CurrentColor, 1.0f);
         return;
@@ -131,7 +131,7 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     float2 PrevUV = CurrentUV - Motion.xy;
     if (!all(isfinite(PrevUV)) || any(PrevUV < 0.0f) || any(PrevUV > 1.0f))
     {
-        OutHistory[Pixel] = float4(CurrentColor, 1.0f);
+        OutHistory[Pixel] = float4(0.0f, 0.0f, 1.0f, 1.0f);
         return;
     }
 
@@ -140,21 +140,30 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
     float DepthDifference = abs(ExpectedPreviousDepth - StoredPreviousDepth);
     
     const float DepthThreshold = 0.002f;
-    if(DepthDifference > DepthThreshold)
+    bool DepthValid = isfinite(ExpectedPreviousDepth) && isfinite(StoredPreviousDepth) && StoredPreviousDepth >= 0.0f && StoredPreviousDepth < 1.0f 
+           && abs(ExpectedPreviousDepth - StoredPreviousDepth) < DepthThreshold;
+    
+    if (!DepthValid)
     {
         OutHistory[Pixel] = float4(CurrentColor, 1.0f);
         return;
     };
     
     float3 PrevColor = PrevHistory.SampleLevel(LinearSampler, PrevUV, 0).rgb;
-    if (any(isnan(PrevColor)) || any(isinf(PrevColor)))
+    float PrevLength = PrevHistory.SampleLevel(PointSampler, PrevUV, 0).a;
+    if (any(isnan(PrevColor)) || any(isinf(PrevColor)) || PrevLength < 1.0f)
     {
-        OutHistory[Pixel] = float4(0.0f, 1.0f, 0.0f, 1.0f);
+        OutHistory[Pixel] = float4(CurrentColor, 1.0f);
         return;
     }
+
+    // ÇÈ¼¿º° ´©Àû È½¼ö °è»ê
+    const float MaxHistoryLength = 64.0f;
+
+    float NewLength = min(PrevLength + 1.0f, MaxHistoryLength);
     
-    float Weight = 1.0f / (HistoryFrameCount + 1.0f);
+    float Weight = 1.0f / NewLength;
     float3 AccumulatedColor = lerp(PrevColor, CurrentColor, Weight);
     
-    OutHistory[Pixel] = float4(AccumulatedColor, 1.0f);
+    OutHistory[Pixel] = float4(AccumulatedColor, NewLength);
 }

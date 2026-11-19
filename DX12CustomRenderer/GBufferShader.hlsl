@@ -115,7 +115,6 @@ GBufferOutput PSMain(VSOutput Input)
     Output.GBufferC = float4(MaterialRoughness, MaterialMetallic, 0.0f, 1.0f);
 
     //MotionVector
-
     float2 CurrentUV = Input.Position.xy / RenderTargetSize;
     float2 MotionVector = float2(0.0f, 0.0f);
     float MotionValid = 0.0f;
