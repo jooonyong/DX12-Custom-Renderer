@@ -276,6 +276,10 @@ bool Renderer::Initialize(HWND Hwnd, UINT Width, UINT Height)
 	{
 		return false;
 	}
+	if (!CreateDepthHistoryTexture(Width, Height))
+	{
+		return false;
+	}
 	if (!CreateRaytracingGlobalRootSignature())
 	{
 		return false;
@@ -580,7 +584,7 @@ void Renderer::RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* Command
 	CommandList->DispatchRays(&DispatchDesc);
 }
 
-void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV)
+void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV, const D3D12DescriptorHandle& PrevDepthSRV)
 {
 	ReflectionAccumulationConstant RAConstant{};
 	RAConstant.Width = Width;
@@ -603,6 +607,7 @@ void Renderer::RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* Comma
 	CommandList->SetComputeRootDescriptorTable(5, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 3));
 	CommandList->SetComputeRootConstantBufferView(6, Frame.DeferredPassConstantBuffer->GetGPUVirtualAddress());
 	CommandList->SetComputeRootDescriptorTable(7, SRVDescriptorAllocator.GetGPUHandle(GBufferDescriptorTable, 4));
+	CommandList->SetComputeRootDescriptorTable(8, PrevDepthSRV.GPU);
 
 	CommandList->Dispatch((Width + 7) / 8, (Height + 7) / 8, 1);
 }
@@ -722,6 +727,13 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 	D3D12DescriptorHandle PrevSRV = ReflectionHistoryWriteIndex == 0 ? ReflectionHistorySRV1 : ReflectionHistorySRV2;
 	D3D12DescriptorHandle OutputSRV = ReflectionHistoryWriteIndex == 0 ? ReflectionHistorySRV2 : ReflectionHistorySRV1;
 	D3D12DescriptorHandle OutputUAV = ReflectionHistoryWriteIndex == 0 ? ReflectionHistoryUAV2 : ReflectionHistoryUAV1;
+
+	const UINT PrevDepthIndex = ReflectionHistoryWriteIndex;
+	const UINT OutputDepthIndex = 1 - ReflectionHistoryWriteIndex;
+
+	ID3D12Resource* PrevDepth = DepthHistory[PrevDepthIndex].Get();
+	ID3D12Resource* OutputDepth = DepthHistory[OutputDepthIndex].Get();
+	D3D12DescriptorHandle PrevDepthSRV = DepthHistorySRV[PrevDepthIndex];
 
 	DefaultMaterial->UpdateGPU(CurrentIndex);
 	for (auto& Object : Objects)
@@ -848,12 +860,22 @@ void Renderer::RenderFrame(const Scene& MainScene, const Camera& MainCamera)
 				{ GBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ PrevHistory, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read},
 				{ OutputHistory, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, RenderGraphAccess::Write},
-
+				{ PrevDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, RenderGraphAccess::Read}
 			},
-			[&, PrevSRV, OutputUAV](ID3D12GraphicsCommandList* CommandList)
+			[&, PrevSRV, OutputUAV, PrevDepthSRV](ID3D12GraphicsCommandList* CommandList)
 			{
 				ID3D12GraphicsCommandList4* RaytracingCommandList = static_cast<ID3D12GraphicsCommandList4*>(CommandList);
-				Renderer::RenderReflectionAccumulationPass(RaytracingCommandList, CurrentFrame, PrevSRV, OutputUAV);
+				Renderer::RenderReflectionAccumulationPass(RaytracingCommandList, CurrentFrame, PrevSRV, OutputUAV, PrevDepthSRV);
+			}
+		);
+		Graph.AddPass("DepthHistoryCopyPass",
+			{
+				{ DepthBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, RenderGraphAccess::Read },
+				{ OutputDepth, D3D12_RESOURCE_STATE_COPY_DEST, RenderGraphAccess::Write }
+			},
+			[&, OutputDepth](ID3D12GraphicsCommandList* CommandList)
+			{
+				CommandList->CopyResource(OutputDepth, DepthBuffer.Get());
 			}
 		);
 		Graph.AddPass("DeferredLightingPass",
@@ -1875,7 +1897,14 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	VelocityRange.RegisterSpace = 0;
 	VelocityRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER RootParam[8]{};
+	D3D12_DESCRIPTOR_RANGE PrevDepthRange{};
+	PrevDepthRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	PrevDepthRange.NumDescriptors = 1;
+	PrevDepthRange.BaseShaderRegister = 5;
+	PrevDepthRange.RegisterSpace = 0;
+	PrevDepthRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER RootParam[9]{};
 	RootParam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	RootParam[0].DescriptorTable.NumDescriptorRanges = 1;
 	RootParam[0].DescriptorTable.pDescriptorRanges = &ReflectionTextureRange; //t0 ReflectionTexture;
@@ -1916,27 +1945,38 @@ bool Renderer::CreateReflectionAccumulationRootSignature()
 	RootParam[7].DescriptorTable.pDescriptorRanges = &VelocityRange; //t4 GBufferVelocity
 	RootParam[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	RootParam[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	RootParam[8].DescriptorTable.NumDescriptorRanges = 1;
+	RootParam[8].DescriptorTable.pDescriptorRanges = &PrevDepthRange; //t4 GBufferVelocity
+	RootParam[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
 	D3D12_STATIC_SAMPLER_DESC SamplerDesc{};
 	SamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	SamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	SamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	SamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 	SamplerDesc.MipLODBias = 0.0f;
 	SamplerDesc.MaxAnisotropy = 1;
 	SamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 	SamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
 	SamplerDesc.MinLOD = 0.0f;
 	SamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	SamplerDesc.ShaderRegister = 0; ///s0
+	SamplerDesc.ShaderRegister = 0; //s0
 	SamplerDesc.RegisterSpace = 0;
 	SamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	D3D12_STATIC_SAMPLER_DESC Samplers[2]{};
+	Samplers[0] = SamplerDesc;
+	Samplers[1] = SamplerDesc;
+	Samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	Samplers[1].ShaderRegister = 1; //s1
 
 	D3D12_ROOT_SIGNATURE_DESC RootDesc{};
 	RootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 	RootDesc.NumParameters = _countof(RootParam);
-	RootDesc.NumStaticSamplers = 1;
+	RootDesc.NumStaticSamplers = _countof(Samplers);
 	RootDesc.pParameters = RootParam;
-	RootDesc.pStaticSamplers = &SamplerDesc;
+	RootDesc.pStaticSamplers = Samplers;
 
 	Microsoft::WRL::ComPtr<ID3DBlob> SerializedRootSignature;
 	Microsoft::WRL::ComPtr<ID3DBlob> ErrorBlob;
@@ -3048,6 +3088,39 @@ bool Renderer::CreateReflectionHistoryTexture(UINT Width, UINT Height)
 	Device.GetRaytracingDevice()->CreateUnorderedAccessView(ReflectionHistory2.Get(), nullptr, &RHUAVDesc, ReflectionHistoryUAV2.CPU);
 	Device.GetRaytracingDevice()->CreateShaderResourceView(ReflectionHistory2.Get(), &RHSRVDesc, ReflectionHistorySRV2.CPU);
 
+	return true;
+}
+
+bool Renderer::CreateDepthHistoryTexture(UINT Width, UINT Height)
+{
+	D3D12_RESOURCE_DESC DepthHistoryDesc = DepthBuffer->GetDesc();
+	DepthHistoryDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	D3D12_HEAP_PROPERTIES HeapProp{};
+	HeapProp.Type = D3D12_HEAP_TYPE_DEFAULT;	
+
+	for (int i = 0; i < 2; i++)
+	{
+		HRESULT Result = Device.GetDevice()->CreateCommittedResource(&HeapProp, D3D12_HEAP_FLAG_NONE, &DepthHistoryDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr, IID_PPV_ARGS(&DepthHistory[i]));
+		if (FAILED(Result))
+		{
+			return false;
+		}
+
+		StateTracker.RegisterResource(DepthHistory[i].Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+
+		DepthHistorySRV[i] = SRVDescriptorAllocator.Allocate(1);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{};
+		SRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
+		SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		SRVDesc.Texture2D.MostDetailedMip = 0;
+		SRVDesc.Texture2D.MipLevels = 1;
+		SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
+		Device.GetDevice()->CreateShaderResourceView(DepthHistory[i].Get(), &SRVDesc, DepthHistorySRV[i].CPU);
+	}
 	return true;
 }
 

@@ -158,7 +158,7 @@ public:
 	void RenderRaytracingPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 	void RenderRaytracedShadowPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
 	void RenderRaytracedReflectionPass(ID3D12GraphicsCommandList4* CommandList, FrameResource& Frame);
-	void RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV);
+	void RenderReflectionAccumulationPass(ID3D12GraphicsCommandList* CommandList, FrameResource& Frame, const D3D12DescriptorHandle& PreviousHistorySRV, const D3D12DescriptorHandle& OutputHistoryUAV, const D3D12DescriptorHandle& PrevDepthSRV);
 	
 	void RenderFrame(const Scene& Scene, const Camera& MainCamera);
 
@@ -215,6 +215,7 @@ public:
 	bool CreateRaytracedShadowMap(UINT Width, UINT Height);
 	bool CreateRaytracedReflection(UINT Width, UINT Height);
 	bool CreateReflectionHistoryTexture(UINT Width, UINT Height);
+	bool CreateDepthHistoryTexture(UINT Width, UINT Height);
 
 	bool CreateRaytracingGlobalRootSignature();
 	bool CreateRaytracingStateObject();
@@ -367,6 +368,9 @@ private:
 	D3D12DescriptorHandle ReflectionHistorySRV1;
 	D3D12DescriptorHandle ReflectionHistoryUAV2;
 	D3D12DescriptorHandle ReflectionHistorySRV2;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> DepthHistory[2]{};
+	D3D12DescriptorHandle DepthHistorySRV[2]{};	
 
 	UINT ReflectionHistoryWriteIndex = 1;
 	UINT ReflectionHistoryFrameCount = 0;

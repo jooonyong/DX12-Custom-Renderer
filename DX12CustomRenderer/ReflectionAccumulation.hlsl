@@ -4,8 +4,10 @@ RWTexture2D<float4> OutHistory : register(u0);
 Texture2D<float4> GBufferB : register(t2); //normal
 Texture2D<float> SceneDepth : register(t3); //Depth
 Texture2D<float4> GBufferVelocity : register(t4); //MotionVector
+Texture2D<float4> PrevDepthTexture : register(t5); //PrevDepth
 
 SamplerState LinearSampler : register(s0);
+SamplerState PointSampler : register(s1);  
 
 static const float GaussianKernel[5] =
 {
@@ -133,8 +135,18 @@ void CSMain(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    float3 PrevColor = PrevHistory.SampleLevel(LinearSampler, PrevUV, 0).rgb;
+    float ExpectedPreviousDepth = Motion.w;
+    float StoredPreviousDepth = PrevDepthTexture.SampleLevel(PointSampler, PrevUV, 0);
+    float DepthDifference = abs(ExpectedPreviousDepth - StoredPreviousDepth);
     
+    const float DepthThreshold = 0.002f;
+    if(DepthDifference > DepthThreshold)
+    {
+        OutHistory[Pixel] = float4(CurrentColor, 1.0f);
+        return;
+    };
+    
+    float3 PrevColor = PrevHistory.SampleLevel(LinearSampler, PrevUV, 0).rgb;
     if (any(isnan(PrevColor)) || any(isinf(PrevColor)))
     {
         OutHistory[Pixel] = float4(0.0f, 1.0f, 0.0f, 1.0f);

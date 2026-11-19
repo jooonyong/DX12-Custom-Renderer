@@ -115,24 +115,26 @@ GBufferOutput PSMain(VSOutput Input)
     Output.GBufferC = float4(MaterialRoughness, MaterialMetallic, 0.0f, 1.0f);
 
     //MotionVector
-    
+
     float2 CurrentUV = Input.Position.xy / RenderTargetSize;
     float2 MotionVector = float2(0.0f, 0.0f);
     float MotionValid = 0.0f;
-
+    float ExpectedPrevDepth = 1.0f;
+    
     if (HistoryValid > 0.5f && ObjectHistoryValid > 0.5f && Input.PrevClipPosition.w > 1e-6f)
     {
-        float2 PrevNDC = Input.PrevClipPosition.xy / Input.PrevClipPosition.w;
+        float3 PrevNDC = Input.PrevClipPosition.xyz / Input.PrevClipPosition.w;
         float2 PrevUV = float2(PrevNDC.x * 0.5f + 0.5f, 0.5f - PrevNDC.y * 0.5f);
 
-        if (all(isfinite(PrevUV)) && all(PrevUV >= 0.0f) && all(PrevUV <= 1.0f))
+        if (all(isfinite(PrevUV)) && all(PrevUV >= 0.0f) && all(PrevUV <= 1.0f) && PrevNDC.z >= 0.0f && PrevNDC.z < 1.0f)
         {
             MotionVector = CurrentUV - PrevUV;
+            ExpectedPrevDepth = PrevNDC.z;
             MotionValid = 1.0f;
         }
     }
 
-    Output.GBufferVelocity = float4(MotionVector, MotionValid, 0.0f);
+    Output.GBufferVelocity = float4(MotionVector, MotionValid, ExpectedPrevDepth);
     
     return Output;
 }
